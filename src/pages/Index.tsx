@@ -852,6 +852,8 @@ const Index = () => {
         {/* Parameter Panel */}
         <div
           className="sim-panel-params"
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
           style={{
             position: "absolute",
             bottom: 24,
@@ -1088,6 +1090,8 @@ const Index = () => {
         {/* Metrics Panel */}
         <div
           className="sim-panel-metrics"
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
           style={{
             position: "absolute",
             bottom: 24,
