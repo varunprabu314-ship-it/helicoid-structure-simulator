@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 declare global {
   interface Window {
-    THREE: typeof import("three");
+    THREE: any;
   }
 }
 
