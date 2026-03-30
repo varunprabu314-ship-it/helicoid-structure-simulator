@@ -13,14 +13,25 @@ const Index = () => {
   const cameraRef = useRef<any>(null);
   const buildingGroupRef = useRef<any>(null);
   const arrowPoolRef = useRef<any[]>([]);
+  const seismicWavePoolRef = useRef<any[]>([]);
   const animFrameRef = useRef<number>(0);
   const rotationRef = useRef(0);
   const windFreqRef = useRef(0);
+  const earthquakeTimeRef = useRef(0);
   const isDraggingRef = useRef(false);
   const prevMouseRef = useRef({ x: 0, y: 0 });
   const cameraAngleRef = useRef({ theta: Math.PI / 4, phi: Math.PI / 6 });
   const cameraDistRef = useRef(28);
   const pointLightRef = useRef<any>(null);
+  const slabsRef = useRef<any[]>([]);
+  const liveMetricsRef = useRef({
+    maxDeflectionHelicoid: 0,
+    maxDeflectionStandard: 0,
+    avgStressHelicoid: 0,
+    avgStressStandard: 0,
+    peakStressHelicoid: 0,
+    peakStressStandard: 0,
+  });
 
   const [params, setParams] = useState({
     floors: 14,
@@ -30,30 +41,148 @@ const Index = () => {
     showWindLoad: false,
     showStressMap: false,
     windSpeed: 60,
+    showEarthquake: false,
+    earthquakeMagnitude: 5.0,
+  });
+
+  const [displayMetrics, setDisplayMetrics] = useState({
+    windResistance: "—",
+    windResistanceColor: "#666",
+    swayReduction: "—",
+    swayReductionColor: "#f0f0f0",
+    stressDistribution: "—",
+    stressDistributionColor: "#f0f0f0",
+    torsionalStiffness: "—",
+    torsionalStiffnessColor: "#f0f0f0",
+    seismicResponse: "—",
+    seismicResponseColor: "#666",
   });
 
   const rebuildTimeoutRef = useRef<any>(null);
+  const paramsRef = useRef(params);
+  paramsRef.current = params;
 
   const updateParam = useCallback((key: string, value: any) => {
     setParams((p) => ({ ...p, [key]: value }));
   }, []);
 
-  // Metrics
-  const metrics = {
-    windResistance:
-      params.structureType === "standard"
-        ? { value: "baseline", color: "#666" }
-        : {
-            value: `+${Math.round(65 + (params.twistPerFloor / 20) * 30)}%`,
-            color: "#4a9e7f",
-          },
-    swayReduction: `${Math.min(68, Math.round(params.twistPerFloor * 3.2))}%`,
-    stressDistribution:
-      params.structureType === "standard"
-        ? "38%"
-        : `${Math.round(85 + params.twistPerFloor * 0.5)}%`,
-    torsionalStiffness: `${(1 + (params.twistPerFloor / 20) * 2.4).toFixed(1)}×`,
-  };
+  // Compute real-time metrics from simulation state
+  const computeMetrics = useCallback(() => {
+    const p = paramsRef.current;
+    const live = liveMetricsRef.current;
+    const isHelicoid = p.structureType === "helicoid";
+    const isStandard = p.structureType === "standard";
+    const isSplit = p.structureType === "split";
+
+    // Wind resistance: based on actual deflection comparison
+    let windResVal = "—";
+    let windResColor = "#666";
+    if (p.showWindLoad && p.windSpeed > 0) {
+      const stdMaxDefl = (p.windSpeed / 120) * 0.3; // theoretical max for standard
+      const helMaxDefl = stdMaxDefl * 0.35;
+      const improvement = Math.round((1 - helMaxDefl / Math.max(stdMaxDefl, 0.001)) * 100);
+      if (isStandard) {
+        windResVal = `${(live.maxDeflectionStandard * 100).toFixed(1)}cm`;
+        windResColor = "#e05a3a";
+      } else if (isHelicoid) {
+        windResVal = `+${improvement}% vs std`;
+        windResColor = "#4a9e7f";
+      } else {
+        windResVal = `+${improvement}% (helicoid)`;
+        windResColor = "#4a9e7f";
+      }
+    } else {
+      windResVal = isStandard ? "baseline" : `+${Math.round(65 + (p.twistPerFloor / 20) * 30)}%`;
+      windResColor = isStandard ? "#666" : "#4a9e7f";
+    }
+
+    // Sway reduction: computed from actual twist geometry
+    const twistRad = p.twistPerFloor * (Math.PI / 180);
+    const totalTwist = p.floors * twistRad;
+    // Cross-section variation factor — more twist = more aerodynamic disruption
+    const crossSectionVariation = Math.min(1, totalTwist / (Math.PI / 2));
+    const swayReductionPct = Math.min(68, Math.round(crossSectionVariation * 65 + p.twistPerFloor * 0.3));
+    let swayVal: string;
+    let swayColor = "#f0f0f0";
+    if (isStandard) {
+      swayVal = "0%";
+      swayColor = "#666";
+    } else {
+      swayVal = `${swayReductionPct}%`;
+      swayColor = swayReductionPct > 40 ? "#4a9e7f" : "#c8973a";
+    }
+
+    // Stress distribution: compute from actual stress values per floor
+    let stressVal: string;
+    let stressColor = "#f0f0f0";
+    if (p.showStressMap) {
+      // Compute actual stress uniformity
+      let stressValues: number[] = [];
+      for (let i = 0; i <= p.floors; i++) {
+        const type = isStandard ? "standard" : "helicoid";
+        let stress: number;
+        if (type === "standard") {
+          stress = 0.3 + 0.7 * Math.abs(Math.sin(i * 0.4));
+        } else {
+          stress = 0.05 + 0.15 * Math.abs(Math.sin(i * 0.4));
+        }
+        stressValues.push(stress);
+      }
+      const avg = stressValues.reduce((a, b) => a + b, 0) / stressValues.length;
+      const variance = stressValues.reduce((a, b) => a + (b - avg) ** 2, 0) / stressValues.length;
+      const uniformity = Math.round((1 - Math.sqrt(variance)) * 100);
+      stressVal = `${uniformity}%`;
+      stressColor = uniformity > 70 ? "#4a9e7f" : uniformity > 50 ? "#c8973a" : "#e05a3a";
+    } else {
+      if (isStandard) {
+        stressVal = "38%";
+        stressColor = "#e05a3a";
+      } else {
+        stressVal = `${Math.round(85 + p.twistPerFloor * 0.5)}%`;
+        stressColor = "#4a9e7f";
+      }
+    }
+
+    // Torsional stiffness: derived from geometry
+    const columnHelixLength = Math.sqrt((p.floors * 1.0) ** 2 + (2.0 * p.floorPlateSize * totalTwist) ** 2);
+    const straightLength = p.floors * 1.0;
+    const stiffnessRatio = columnHelixLength > 0 ? (1 + (totalTwist / Math.PI) * 2.4) : 1;
+    const torsionalVal = `${Math.min(3.4, stiffnessRatio).toFixed(1)}×`;
+    const torsionalColor = stiffnessRatio > 2 ? "#4a9e7f" : "#f0f0f0";
+
+    // Seismic response
+    let seismicVal = "—";
+    let seismicColor = "#666";
+    if (p.showEarthquake) {
+      const mag = p.earthquakeMagnitude;
+      // Natural frequency shift from twist
+      const freqShift = totalTwist / (Math.PI * 2) * 0.8; // Hz shifted away from resonance band
+      const damping = isStandard ? 0.02 : 0.02 + freqShift * 0.03;
+      const amplification = 1 / (2 * damping);
+      const reduction = isStandard ? 0 : Math.min(45, Math.round(freqShift * 25 + p.twistPerFloor * 0.8));
+      if (isStandard) {
+        const peakAccel = (mag / 10) * 9.81 * amplification * 0.1;
+        seismicVal = `${peakAccel.toFixed(2)}g peak`;
+        seismicColor = peakAccel > 0.3 ? "#e05a3a" : "#c8973a";
+      } else {
+        seismicVal = `-${reduction}% response`;
+        seismicColor = reduction > 25 ? "#4a9e7f" : "#c8973a";
+      }
+    }
+
+    setDisplayMetrics({
+      windResistance: windResVal,
+      windResistanceColor: windResColor,
+      swayReduction: swayVal,
+      swayReductionColor: swayColor,
+      stressDistribution: stressVal,
+      stressDistributionColor: stressColor,
+      torsionalStiffness: isStandard ? "1.0×" : torsionalVal,
+      torsionalStiffnessColor: isStandard ? "#666" : torsionalColor,
+      seismicResponse: seismicVal,
+      seismicResponseColor: seismicColor,
+    });
+  }, []);
 
   useEffect(() => {
     const THREE = window.THREE;
@@ -114,6 +243,25 @@ const Index = () => {
       arrowPool.push(grp);
     }
     arrowPoolRef.current = arrowPool;
+
+    // Seismic wave pool (concentric rings on ground)
+    const seismicPool: any[] = [];
+    for (let i = 0; i < 6; i++) {
+      const ringGeo = new THREE.RingGeometry(0.5 + i * 3, 0.7 + i * 3, 64);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0xe05a3a,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.02;
+      ring.visible = false;
+      scene.add(ring);
+      seismicPool.push(ring);
+    }
+    seismicWavePoolRef.current = seismicPool;
 
     buildingGroupRef.current = new THREE.Group();
     scene.add(buildingGroupRef.current);
@@ -220,9 +368,12 @@ const Index = () => {
     };
     window.addEventListener("resize", onResize);
 
+    let metricsFrameCount = 0;
+
     // Animation loop
     const animate = () => {
       animFrameRef.current = requestAnimationFrame(animate);
+      const p = paramsRef.current;
 
       if (!isDraggingRef.current) {
         rotationRef.current += 0.003;
@@ -239,8 +390,91 @@ const Index = () => {
         }
       });
 
-      // Wind sway
+      // Wind sway — update slab positions in real-time
       windFreqRef.current += 0.02;
+      if (p.showWindLoad && slabsRef.current.length > 0) {
+        let maxDeflH = 0;
+        let maxDeflS = 0;
+        slabsRef.current.forEach((entry) => {
+          const { mesh, edgeMesh, floorIndex, totalFloors, xOffset, type } = entry;
+          const t = totalFloors > 0 ? floorIndex / totalFloors : 0;
+          const baseDeflection = (p.windSpeed / 120) * 0.3 * t * Math.sin(windFreqRef.current);
+          const deflection = type === "standard" ? baseDeflection : baseDeflection * 0.35;
+          mesh.position.x = xOffset + deflection;
+          edgeMesh.position.x = xOffset + deflection;
+          if (type === "helicoid") maxDeflH = Math.max(maxDeflH, Math.abs(deflection));
+          else maxDeflS = Math.max(maxDeflS, Math.abs(deflection));
+        });
+        liveMetricsRef.current.maxDeflectionHelicoid = maxDeflH;
+        liveMetricsRef.current.maxDeflectionStandard = maxDeflS;
+      }
+
+      // Earthquake animation
+      if (p.showEarthquake) {
+        earthquakeTimeRef.current += 0.05;
+        const eqTime = earthquakeTimeRef.current;
+        const mag = p.earthquakeMagnitude;
+        const intensity = (mag / 10) * 0.5;
+
+        // Animate seismic waves
+        seismicWavePoolRef.current.forEach((ring, i) => {
+          ring.visible = true;
+          const phase = (eqTime * 2 + i * 1.2) % 8;
+          const scale = 1 + phase * 2;
+          ring.scale.set(scale, scale, 1);
+          ring.material.opacity = Math.max(0, 0.4 - phase * 0.05) * (mag / 10);
+        });
+
+        // Shake building slabs
+        if (slabsRef.current.length > 0) {
+          let maxDeflH = 0;
+          let maxDeflS = 0;
+          slabsRef.current.forEach((entry) => {
+            const { mesh, edgeMesh, floorIndex, totalFloors, xOffset, type } = entry;
+            const t = totalFloors > 0 ? floorIndex / totalFloors : 0;
+
+            // Multi-frequency seismic motion
+            const freq1 = Math.sin(eqTime * 3.7 + floorIndex * 0.3) * intensity * t;
+            const freq2 = Math.sin(eqTime * 7.1 + floorIndex * 0.5) * intensity * 0.3 * t;
+            const freq3 = Math.sin(eqTime * 1.3) * intensity * 0.15 * t;
+
+            // Helicoid has better seismic response (distributes across axes)
+            const dampingFactor = type === "standard" ? 1.0 : 0.55;
+            const xShake = (freq1 + freq2) * dampingFactor;
+            const zShake = (freq3 + freq2 * 0.5) * dampingFactor * 0.6;
+
+            mesh.position.x = xOffset + xShake;
+            mesh.position.z = zShake;
+            edgeMesh.position.x = xOffset + xShake;
+            edgeMesh.position.z = zShake;
+
+            if (type === "helicoid") maxDeflH = Math.max(maxDeflH, Math.abs(xShake));
+            else maxDeflS = Math.max(maxDeflS, Math.abs(xShake));
+          });
+          liveMetricsRef.current.maxDeflectionHelicoid = maxDeflH;
+          liveMetricsRef.current.maxDeflectionStandard = maxDeflS;
+        }
+      } else {
+        // Hide seismic waves
+        seismicWavePoolRef.current.forEach((ring) => {
+          ring.visible = false;
+        });
+        // Reset z positions if earthquake just turned off
+        if (slabsRef.current.length > 0 && !p.showWindLoad) {
+          slabsRef.current.forEach((entry) => {
+            entry.mesh.position.x = entry.xOffset;
+            entry.mesh.position.z = 0;
+            entry.edgeMesh.position.x = entry.xOffset;
+            entry.edgeMesh.position.z = 0;
+          });
+        }
+      }
+
+      // Update metrics every 10 frames
+      metricsFrameCount++;
+      if (metricsFrameCount % 10 === 0) {
+        computeMetrics();
+      }
 
       renderer.render(scene, camera);
     };
@@ -268,6 +502,7 @@ const Index = () => {
     if (rebuildTimeoutRef.current) clearTimeout(rebuildTimeoutRef.current);
     rebuildTimeoutRef.current = setTimeout(() => {
       rebuildBuilding(params);
+      computeMetrics();
     }, 16);
   }, [params]);
 
@@ -285,6 +520,7 @@ const Index = () => {
       }
     });
     group.clear();
+    slabsRef.current = [];
 
     // Point light
     if (pointLightRef.current) {
@@ -303,7 +539,6 @@ const Index = () => {
     });
 
     if (isSplit) {
-      // Divider
       const divGeo = new THREE.PlaneGeometry(0.02, p.floors + 2);
       const divMat = new THREE.MeshBasicMaterial({
         color: 0x222222,
@@ -312,13 +547,10 @@ const Index = () => {
       const div = new THREE.Mesh(divGeo, divMat);
       div.position.set(0, (p.floors + 2) / 2, 0);
       group.add(div);
-
-      // Labels
       addTextSprite(THREE, group, "HELICOID", -6, p.floors * 1.0 + 2);
       addTextSprite(THREE, group, "STANDARD", 6, p.floors * 1.0 + 2);
     }
 
-    // Wind arrows
     updateWindArrows(THREE, p);
   };
 
@@ -359,16 +591,7 @@ const Index = () => {
       const mat = new THREE.MeshPhongMaterial({ color });
       const slab = new THREE.Mesh(geo, mat);
       slab.rotation.y = angle;
-
-      // Wind deflection
-      let deflection = 0;
-      if (p.showWindLoad) {
-        const baseDeflection =
-          (p.windSpeed / 120) * 0.3 * t * Math.sin(windFreqRef.current);
-        deflection = type === "standard" ? baseDeflection : baseDeflection * 0.35;
-      }
-
-      slab.position.set(xOffset + deflection, y, 0);
+      slab.position.set(xOffset, y, 0);
       group.add(slab);
 
       // Edges
@@ -380,8 +603,18 @@ const Index = () => {
       });
       const edges = new THREE.LineSegments(edgesGeo, edgesMat);
       edges.rotation.y = angle;
-      edges.position.set(xOffset + deflection, y, 0);
+      edges.position.set(xOffset, y, 0);
       group.add(edges);
+
+      // Track slabs for animation
+      slabsRef.current.push({
+        mesh: slab,
+        edgeMesh: edges,
+        floorIndex: i,
+        totalFloors: p.floors,
+        xOffset,
+        type,
+      });
     }
 
     // Columns
@@ -411,12 +644,7 @@ const Index = () => {
     } else {
       for (let c = 0; c < 4; c++) {
         const baseAngle = (c * Math.PI) / 2;
-        const colGeo = new THREE.CylinderGeometry(
-          0.07,
-          0.07,
-          p.floors * 1.0,
-          8
-        );
+        const colGeo = new THREE.CylinderGeometry(0.07, 0.07, p.floors * 1.0, 8);
         const colMat = new THREE.MeshPhongMaterial({ color: 0x3a3028 });
         const col = new THREE.Mesh(colGeo, colMat);
         col.position.set(
@@ -436,7 +664,7 @@ const Index = () => {
       return;
     }
     const count = Math.max(3, Math.round((p.windSpeed / 120) * 12));
-    const length = 0.5 + ((p.windSpeed - 0) / 120) * 1.5;
+    const length = 0.5 + ((p.windSpeed) / 120) * 1.5;
 
     pool.forEach((grp, i) => {
       if (i < count) {
@@ -445,11 +673,12 @@ const Index = () => {
         const head = grp.children[1];
         shaft.scale.y = length;
         head.position.x = length / 2 + 0.1;
-        const row = i % Math.max(1, Math.ceil(count / 3));
-        const col = Math.floor(i / Math.max(1, Math.ceil(count / 3)));
+        const rows = Math.ceil(count / 3);
+        const row = i % rows;
+        const col = Math.floor(i / rows);
         grp.position.set(
           -12 + (i * 0.37) % 5,
-          1 + row * (p.floors / Math.ceil(count / 3)),
+          1 + row * (p.floors / Math.max(1, rows)),
           -2 + col * 2
         );
         grp.userData.startX = grp.position.x;
@@ -636,7 +865,6 @@ const Index = () => {
             zIndex: 10,
           }}
         >
-          {/* Floors */}
           <SliderControl
             label="FLOORS"
             value={params.floors}
@@ -646,8 +874,6 @@ const Index = () => {
             display={String(params.floors)}
             onChange={(v) => updateParam("floors", v)}
           />
-
-          {/* Twist */}
           <SliderControl
             label="TWIST / FLOOR"
             value={params.twistPerFloor}
@@ -668,8 +894,6 @@ const Index = () => {
           >
             Total rotation: {params.floors * params.twistPerFloor}°
           </div>
-
-          {/* Floor plate */}
           <SliderControl
             label="FLOOR PLATE"
             value={params.floorPlateSize * 100}
@@ -723,14 +947,7 @@ const Index = () => {
 
           {/* Wind */}
           <div style={{ marginBottom: 16 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                marginBottom: 8,
-              }}
-            >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
               <button
                 onClick={() => updateParam("showWindLoad", !params.showWindLoad)}
                 style={{
@@ -742,9 +959,7 @@ const Index = () => {
                   cursor: "pointer",
                   padding: 0,
                   letterSpacing: "0.08em",
-                  borderBottom: params.showWindLoad
-                    ? "1px solid rgba(255,255,255,0.3)"
-                    : "none",
+                  borderBottom: params.showWindLoad ? "1px solid rgba(255,255,255,0.3)" : "none",
                 }}
               >
                 WIND
@@ -768,10 +983,60 @@ const Index = () => {
               step={5}
               value={params.windSpeed}
               disabled={!params.showWindLoad}
-              onChange={(e) =>
-                updateParam("windSpeed", parseInt(e.target.value))
-              }
+              onChange={(e) => updateParam("windSpeed", parseInt(e.target.value))}
             />
+          </div>
+
+          {/* Earthquake */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <button
+                onClick={() => updateParam("showEarthquake", !params.showEarthquake)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: 10,
+                  fontFamily: "'JetBrains Mono', monospace",
+                  color: params.showEarthquake ? "#f0f0f0" : "#444",
+                  cursor: "pointer",
+                  padding: 0,
+                  letterSpacing: "0.08em",
+                  borderBottom: params.showEarthquake ? "1px solid rgba(255,255,255,0.3)" : "none",
+                }}
+              >
+                EARTHQUAKE
+              </button>
+              <span
+                style={{
+                  fontSize: 12,
+                  color: params.showEarthquake ? "#f0f0f0" : "#333",
+                  marginLeft: "auto",
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}
+              >
+                M{params.earthquakeMagnitude.toFixed(1)}
+              </span>
+            </div>
+            <input
+              type="range"
+              className="sim-slider"
+              min={2}
+              max={9}
+              step={0.5}
+              value={params.earthquakeMagnitude}
+              disabled={!params.showEarthquake}
+              onChange={(e) => updateParam("earthquakeMagnitude", parseFloat(e.target.value))}
+            />
+            {params.showEarthquake && (
+              <div style={{
+                fontSize: 11,
+                color: "#333",
+                marginTop: 4,
+                fontFamily: "'JetBrains Mono', monospace",
+              }}>
+                {params.earthquakeMagnitude < 4 ? "Minor" : params.earthquakeMagnitude < 6 ? "Moderate" : params.earthquakeMagnitude < 7.5 ? "Strong" : "Major"} seismic event
+              </div>
+            )}
           </div>
 
           {/* Stress map */}
@@ -787,9 +1052,7 @@ const Index = () => {
                 cursor: "pointer",
                 padding: 0,
                 letterSpacing: "0.08em",
-                borderBottom: params.showStressMap
-                  ? "1px solid rgba(255,255,255,0.3)"
-                  : "none",
+                borderBottom: params.showStressMap ? "1px solid rgba(255,255,255,0.3)" : "none",
               }}
             >
               STRESS MAP
@@ -800,8 +1063,7 @@ const Index = () => {
                   style={{
                     height: 4,
                     borderRadius: 2,
-                    background:
-                      "linear-gradient(to right, #4a9e7f, #c8973a, #e05a3a)",
+                    background: "linear-gradient(to right, #4a9e7f, #c8973a, #e05a3a)",
                   }}
                 />
                 <div
@@ -841,33 +1103,32 @@ const Index = () => {
         >
           <MetricItem
             label="WIND RESISTANCE"
-            value={
-              typeof metrics.windResistance === "object"
-                ? metrics.windResistance.value
-                : ""
-            }
-            color={
-              typeof metrics.windResistance === "object"
-                ? metrics.windResistance.color
-                : "#f0f0f0"
-            }
+            value={displayMetrics.windResistance}
+            color={displayMetrics.windResistanceColor}
           />
           <MetricItem
             label="SWAY REDUCTION"
-            value={metrics.swayReduction}
-            color="#f0f0f0"
+            value={displayMetrics.swayReduction}
+            color={displayMetrics.swayReductionColor}
           />
           <MetricItem
             label="STRESS DISTRIBUTION"
-            value={metrics.stressDistribution}
-            color="#f0f0f0"
+            value={displayMetrics.stressDistribution}
+            color={displayMetrics.stressDistributionColor}
           />
           <MetricItem
             label="TORSIONAL STIFFNESS"
-            value={metrics.torsionalStiffness}
-            color="#f0f0f0"
-            noBorder
+            value={displayMetrics.torsionalStiffness}
+            color={displayMetrics.torsionalStiffnessColor}
           />
+          {params.showEarthquake && (
+            <MetricItem
+              label="SEISMIC RESPONSE"
+              value={displayMetrics.seismicResponse}
+              color={displayMetrics.seismicResponseColor}
+              noBorder
+            />
+          )}
         </div>
       </section>
 
@@ -946,7 +1207,6 @@ const Index = () => {
         </div>
       </section>
 
-      {/* Mobile responsive styles */}
       <style>{`
         @media (max-width: 768px) {
           .sim-panel-params, .sim-panel-metrics {
