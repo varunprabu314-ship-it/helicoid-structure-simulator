@@ -538,7 +538,25 @@ const Index = () => {
       }
 
       metricsFrameCount++;
-      if (metricsFrameCount % 10 === 0) computeMetrics();
+      if (metricsFrameCount % 10 === 0) {
+        computeMetrics();
+
+        // Record energy history
+        simTimeRef.current += 0.16;
+        const hist = energyHistoryRef.current;
+        hist.push({
+          time: simTimeRef.current,
+          helDiss: en.helicoidDissipated,
+          stdDiss: en.standardDissipated,
+          helAbs: en.helicoidAbsorbed,
+          stdAbs: en.standardAbsorbed,
+        });
+        // Keep last 200 points
+        if (hist.length > 200) hist.shift();
+
+        // Draw chart
+        drawEnergyChart();
+      }
 
       renderer.render(scene, camera);
     };
