@@ -580,6 +580,101 @@ const Index = () => {
     };
   }, []);
 
+  const drawEnergyChart = useCallback(() => {
+    const canvas = chartCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const hist = energyHistoryRef.current;
+    if (hist.length < 2) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
+    const W = rect.width;
+    const H = rect.height;
+
+    // Clear
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = "#0a0f0c";
+    ctx.fillRect(0, 0, W, H);
+
+    // Border
+    ctx.strokeStyle = "rgba(74,158,127,0.12)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
+
+    const pad = { top: 30, right: 20, bottom: 30, left: 50 };
+    const plotW = W - pad.left - pad.right;
+    const plotH = H - pad.top - pad.bottom;
+
+    // Find max value
+    let maxVal = 1;
+    hist.forEach((d) => {
+      maxVal = Math.max(maxVal, d.helDiss, d.stdDiss, d.helAbs, d.stdAbs);
+    });
+    maxVal *= 1.1;
+
+    // Grid lines
+    ctx.strokeStyle = "rgba(74,158,127,0.06)";
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i <= 4; i++) {
+      const y = pad.top + (plotH / 4) * i;
+      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + plotW, y); ctx.stroke();
+      ctx.fillStyle = "#1e2e26";
+      ctx.font = "9px 'JetBrains Mono', monospace";
+      ctx.textAlign = "right";
+      ctx.fillText(`${Math.round(maxVal * (1 - i / 4))}`, pad.left - 6, y + 3);
+    }
+
+    // Draw lines
+    const drawLine = (key: "helDiss" | "stdDiss" | "helAbs" | "stdAbs", color: string, dash?: number[]) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash(dash || []);
+      ctx.beginPath();
+      hist.forEach((d, i) => {
+        const x = pad.left + (i / (hist.length - 1)) * plotW;
+        const y = pad.top + plotH - (d[key] / maxVal) * plotH;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+    };
+
+    drawLine("helDiss", "#4a9e7f");
+    drawLine("stdDiss", "#e05a3a");
+    drawLine("helAbs", "#4a9e7f", [4, 4]);
+    drawLine("stdAbs", "#e05a3a", [4, 4]);
+
+    // Title
+    ctx.fillStyle = "#4a6b5c";
+    ctx.font = "10px 'JetBrains Mono', monospace";
+    ctx.textAlign = "left";
+    ctx.fillText("ENERGY OVER TIME (kJ)", pad.left, 16);
+
+    // Legend
+    const legendX = W - 200;
+    ctx.fillStyle = "#4a9e7f"; ctx.fillRect(legendX, 8, 12, 2);
+    ctx.fillStyle = "#4a6b5c"; ctx.font = "9px 'JetBrains Mono', monospace";
+    ctx.fillText("Helicoid (dissipated)", legendX + 16, 12);
+    ctx.fillStyle = "#e05a3a"; ctx.fillRect(legendX, 20, 12, 2);
+    ctx.fillStyle = "#4a6b5c";
+    ctx.fillText("Standard (dissipated)", legendX + 16, 24);
+
+    // X axis label
+    ctx.fillStyle = "#1e2e26";
+    ctx.textAlign = "center";
+    ctx.fillText("Time →", pad.left + plotW / 2, H - 6);
+
+    // Unit
+    ctx.textAlign = "left";
+    ctx.fillText("kJ", 4, pad.top + plotH / 2);
+  }, []);
+
   const spawnDebris = (THREE: any, xCenter: number, floors: number, _type: string) => {
     const pool = debrisPoolRef.current;
     let count = 0;
