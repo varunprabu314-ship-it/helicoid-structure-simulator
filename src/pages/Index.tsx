@@ -18,6 +18,9 @@ const Index = () => {
   const seismicWavePoolRef = useRef<any[]>([]);
   const debrisPoolRef = useRef<any[]>([]);
   const crackLinesRef = useRef<any[]>([]);
+  const chartCanvasRef = useRef<HTMLCanvasElement>(null);
+  const energyHistoryRef = useRef<{ time: number; helDiss: number; stdDiss: number; helAbs: number; stdAbs: number }[]>([]);
+  const simTimeRef = useRef(0);
   const animFrameRef = useRef<number>(0);
   const rotationRef = useRef(0);
   const windFreqRef = useRef(0);
