@@ -1288,6 +1288,29 @@ const Index = () => {
         </div>
       </section>
 
+      {/* Energy Chart */}
+      <section style={{ padding: "0 32px 40px", maxWidth: 1200, margin: "0 auto" }}>
+        <canvas
+          ref={chartCanvasRef}
+          style={{
+            width: "100%",
+            height: 200,
+            borderRadius: 8,
+            border: "1px solid rgba(74,158,127,0.12)",
+            background: "#0a0f0c",
+          }}
+        />
+        <div style={{
+          display: "flex", justifyContent: "center", gap: 24, marginTop: 8,
+          fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "#4a6b5c",
+        }}>
+          <span>━ solid = dissipated</span>
+          <span>╌ dashed = absorbed</span>
+          <span style={{ color: "#4a9e7f" }}>● helicoid</span>
+          <span style={{ color: "#e05a3a" }}>● standard</span>
+        </div>
+      </section>
+
       <style>{`
         @keyframes pulse {
           0%, 100% { opacity: 1; }
