@@ -441,33 +441,47 @@ const Index = () => {
         if (grp.position.x > 8) grp.position.x = grp.userData.startX;
       });
 
-      // Wind sway
+      // Wind sway - MORE DRAMATIC with progressive stress coloring
       windFreqRef.current += 0.02;
       if (p.showWindLoad && slabsRef.current.length > 0) {
         slabsRef.current.forEach((entry) => {
           const { mesh, edgeMesh, floorIndex, totalFloors, xOffset, type } = entry;
           if ((type === "standard" && cs.standardCollapsed) || (type === "helicoid" && cs.helicoidCollapsed)) return;
           const t = totalFloors > 0 ? floorIndex / totalFloors : 0;
-          const baseDefl = (p.windSpeed / 120) * 0.3 * t * Math.sin(windFreqRef.current);
-          const deflection = type === "standard" ? baseDefl : baseDefl * 0.35;
+          // Much larger deflection for visible effect
+          const windIntensity = p.windSpeed / 120;
+          const baseDefl = windIntensity * 0.6 * t * Math.sin(windFreqRef.current + floorIndex * 0.1);
+          const secondaryOsc = windIntensity * 0.15 * t * Math.sin(windFreqRef.current * 2.7 + floorIndex * 0.3);
+          const dampingFactor = type === "standard" ? 1.0 : 0.35;
+          const deflection = (baseDefl + secondaryOsc) * dampingFactor;
           mesh.position.x = xOffset + deflection;
           edgeMesh.position.x = xOffset + deflection;
+          
+          // Progressive stress coloring under wind load
+          if (mesh.material && windIntensity > 0.3) {
+            const stressLevel = windIntensity * t * (type === "standard" ? 1.0 : 0.4);
+            if (stressLevel > 0.5) {
+              mesh.material.emissive = mesh.material.emissive || new THREE.Color();
+              mesh.material.emissive.setHex(type === "standard" ? 0x5a1a0a : 0x0a3a2a);
+              mesh.material.emissiveIntensity = Math.min(0.5, (stressLevel - 0.3) * 0.6);
+            }
+          }
         });
       }
 
-      // Earthquake animation
+      // Earthquake animation - MORE INTENSE with stress visualization
       if (p.showEarthquake) {
         earthquakeTimeRef.current += 0.05;
         const eqTime = earthquakeTimeRef.current;
         const mag = p.earthquakeMagnitude;
-        const intensity = (mag / 10) * 0.5;
+        const intensity = (mag / 10) * 0.8; // Increased from 0.5
 
         seismicWavePoolRef.current.forEach((ring, i) => {
           ring.visible = true;
-          const phase = (eqTime * 2 + i * 1.2) % 8;
-          const scale = 1 + phase * 2;
+          const phase = (eqTime * 2.5 + i * 1.0) % 6;
+          const scale = 1 + phase * 2.5;
           ring.scale.set(scale, scale, 1);
-          ring.material.opacity = Math.max(0, 0.4 - phase * 0.05) * (mag / 10);
+          ring.material.opacity = Math.max(0, 0.5 - phase * 0.08) * (mag / 10);
         });
 
         if (slabsRef.current.length > 0) {
@@ -475,16 +489,35 @@ const Index = () => {
             const { mesh, edgeMesh, floorIndex, totalFloors, xOffset, type } = entry;
             if ((type === "standard" && cs.standardCollapsed) || (type === "helicoid" && cs.helicoidCollapsed)) return;
             const t = totalFloors > 0 ? floorIndex / totalFloors : 0;
+            // Multi-frequency shaking for realistic earthquake
             const freq1 = Math.sin(eqTime * 3.7 + floorIndex * 0.3) * intensity * t;
-            const freq2 = Math.sin(eqTime * 7.1 + floorIndex * 0.5) * intensity * 0.3 * t;
-            const freq3 = Math.sin(eqTime * 1.3) * intensity * 0.15 * t;
-            const dampingFactor = type === "standard" ? 1.0 : 0.55;
-            const xShake = (freq1 + freq2) * dampingFactor;
-            const zShake = (freq3 + freq2 * 0.5) * dampingFactor * 0.6;
+            const freq2 = Math.sin(eqTime * 7.1 + floorIndex * 0.5) * intensity * 0.4 * t;
+            const freq3 = Math.sin(eqTime * 1.3) * intensity * 0.25 * t;
+            const freq4 = Math.sin(eqTime * 11.3 + floorIndex * 0.7) * intensity * 0.15 * t;
+            const dampingFactor = type === "standard" ? 1.0 : 0.45;
+            const xShake = (freq1 + freq2 + freq4) * dampingFactor;
+            const zShake = (freq3 + freq2 * 0.6) * dampingFactor * 0.7;
+            // Vertical bounce under severe earthquake
+            const yBounce = mag > 6 ? Math.abs(Math.sin(eqTime * 5 + floorIndex * 0.4)) * intensity * 0.08 * t : 0;
             mesh.position.x = xOffset + xShake;
             mesh.position.z = zShake;
+            mesh.position.y = floorIndex * 1.0 + yBounce;
             edgeMesh.position.x = xOffset + xShake;
             edgeMesh.position.z = zShake;
+            edgeMesh.position.y = floorIndex * 1.0 + yBounce;
+            
+            // Tilt floors under seismic stress
+            const tiltFactor = type === "standard" ? 1.0 : 0.3;
+            mesh.rotation.z = Math.sin(eqTime * 4 + floorIndex * 0.2) * intensity * 0.04 * t * tiltFactor;
+            edgeMesh.rotation.z = mesh.rotation.z;
+            
+            // Stress coloring
+            if (mesh.material && mag > 5) {
+              const stressLevel = (mag / 10) * t * (type === "standard" ? 1.0 : 0.5);
+              mesh.material.emissive = mesh.material.emissive || new THREE.Color();
+              mesh.material.emissive.setHex(type === "standard" ? 0x5a1a0a : 0x0a3a2a);
+              mesh.material.emissiveIntensity = Math.min(0.6, stressLevel * 0.5);
+            }
           });
         }
       } else {
@@ -494,8 +527,15 @@ const Index = () => {
             if ((entry.type === "standard" && cs.standardCollapsed) || (entry.type === "helicoid" && cs.helicoidCollapsed)) return;
             entry.mesh.position.x = entry.xOffset;
             entry.mesh.position.z = 0;
+            entry.mesh.position.y = entry.floorIndex * 1.0;
+            entry.mesh.rotation.z = 0;
             entry.edgeMesh.position.x = entry.xOffset;
             entry.edgeMesh.position.z = 0;
+            entry.edgeMesh.position.y = entry.floorIndex * 1.0;
+            entry.edgeMesh.rotation.z = 0;
+            if (entry.mesh.material) {
+              entry.mesh.material.emissiveIntensity = 0;
+            }
           });
         }
       }
