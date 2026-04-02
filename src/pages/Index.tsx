@@ -731,15 +731,43 @@ const Index = () => {
   };
 
   const animateCrackDeflection = (_time: number) => {
-    // Crack lines animate in crack mode
+    const p = paramsRef.current;
+    const force = (p.showWindLoad ? p.windSpeed / 120 : 0) + (p.showEarthquake ? p.earthquakeMagnitude / 10 : 0);
+    
     crackLinesRef.current.forEach((crack) => {
-      if (!crack.visible) return;
-      const p = paramsRef.current;
-      const force = (p.showWindLoad ? p.windSpeed / 120 : 0) + (p.showEarthquake ? p.earthquakeMagnitude / 10 : 0);
-      const scale = 1 + force * 2;
-      crack.scale.set(scale, scale, scale);
-      crack.material.opacity = Math.min(0.8, force * 0.6);
+      if (!crack.userData) return;
+      const { isHelicoid, crackIndex } = crack.userData;
+      
+      // Progressive crack growth based on force
+      const growthProgress = Math.min(1, force * 0.8 + 0.1);
+      crack.visible = force > 0.05;
+      
+      if (crack.visible) {
+        // Animate crack thickness pulsing under stress
+        const pulse = 1 + Math.sin(_time * 3 + crackIndex) * 0.15 * force;
+        crack.scale.set(pulse, growthProgress, pulse);
+        crack.material.opacity = Math.min(0.95, force * 0.7 + 0.1);
+        
+        // Helicoid cracks glow green (energy dissipation), standard glow red (failure)
+        if (isHelicoid) {
+          crack.material.emissive?.setHex(0x2a6b4a);
+          crack.material.emissiveIntensity = force * 0.5;
+        } else {
+          crack.material.emissive?.setHex(0x8b2020);
+          crack.material.emissiveIntensity = force * 0.8;
+        }
+      }
     });
+    
+    // Shake crack specimens under earthquake
+    if (p.showEarthquake && buildingGroupRef.current) {
+      const shake = (p.earthquakeMagnitude / 10) * 0.3;
+      buildingGroupRef.current.position.x = Math.sin(_time * 8) * shake;
+      buildingGroupRef.current.position.z = Math.cos(_time * 6) * shake * 0.5;
+    } else if (buildingGroupRef.current) {
+      buildingGroupRef.current.position.x *= 0.9;
+      buildingGroupRef.current.position.z *= 0.9;
+    }
   };
 
   // Rebuild building
