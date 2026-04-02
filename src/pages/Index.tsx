@@ -827,81 +827,184 @@ const Index = () => {
   };
 
   const buildCrackDeflectionScene = (THREE: any, group: any, p: typeof params) => {
-    // Build two block specimens side by side for crack comparison
+    const force = (p.showWindLoad ? p.windSpeed / 120 : 0) + (p.showEarthquake ? p.earthquakeMagnitude / 10 : 0);
+    
     const buildSpecimen = (xOffset: number, type: "helicoid" | "standard") => {
       const width = 4;
-      const height = 8;
+      const height = 10;
       const depth = 2;
+      const numLayers = 20;
+      const isHelicoid = type === "helicoid";
 
-      // Main block
-      const geo = new THREE.BoxGeometry(width, height, depth);
-      const color = type === "helicoid" ? 0x1a3a2a : 0x2a2520;
-      const mat = new THREE.MeshPhongMaterial({ color, transparent: true, opacity: 0.85 });
-      const block = new THREE.Mesh(geo, mat);
+      // Main block - translucent to show internal structure
+      const blockGeo = new THREE.BoxGeometry(width, height, depth);
+      const blockColor = isHelicoid ? 0x0d2a1e : 0x2a1a15;
+      const blockMat = new THREE.MeshPhongMaterial({
+        color: blockColor, transparent: true, opacity: 0.25,
+        side: THREE.DoubleSide,
+      });
+      const block = new THREE.Mesh(blockGeo, blockMat);
       block.position.set(xOffset, height / 2, 0);
       group.add(block);
 
-      // Layer lines to show internal structure
-      const layerCount = 12;
-      for (let i = 0; i < layerCount; i++) {
-        const y = (i / layerCount) * height;
-        const angle = type === "helicoid" ? (i / layerCount) * Math.PI * 0.8 : 0;
-        const lineGeo = new THREE.PlaneGeometry(width * 0.9, 0.02);
-        const lineMat = new THREE.MeshBasicMaterial({
-          color: type === "helicoid" ? 0x4a9e7f : 0x666666,
-          transparent: true,
-          opacity: 0.3,
+      // Internal layers - rotating discs like Emerald Insights
+      for (let i = 0; i < numLayers; i++) {
+        const t = i / numLayers;
+        const y = t * height;
+        // Helicoid: each layer rotates progressively (Bouligand pattern)
+        const layerAngle = isHelicoid ? (i * 15 * Math.PI) / 180 : 0;
+        
+        // Disc layer
+        const discGeo = new THREE.CircleGeometry(width * 0.45, 32);
+        const discColor = isHelicoid ? 0x1a4a35 : 0x3a2a20;
+        const discMat = new THREE.MeshPhongMaterial({
+          color: discColor, transparent: true, opacity: 0.2,
           side: THREE.DoubleSide,
         });
-        const line = new THREE.Mesh(lineGeo, lineMat);
-        line.position.set(xOffset, y, 0);
-        line.rotation.y = angle;
-        group.add(line);
+        const disc = new THREE.Mesh(discGeo, discMat);
+        disc.position.set(xOffset, y, 0);
+        disc.rotation.y = layerAngle;
+        disc.rotation.x = Math.PI / 2;
+        group.add(disc);
+
+        // Fiber line across each disc
+        const fiberLen = width * 0.8;
+        const fiberGeo = new THREE.CylinderGeometry(0.015, 0.015, fiberLen, 4);
+        const fiberColor = isHelicoid ? 0x4a9e7f : 0x666666;
+        const fiberMat = new THREE.MeshBasicMaterial({
+          color: fiberColor, transparent: true, opacity: 0.5,
+        });
+        const fiber = new THREE.Mesh(fiberGeo, fiberMat);
+        fiber.position.set(xOffset, y, 0);
+        fiber.rotation.z = Math.PI / 2;
+        fiber.rotation.y = layerAngle;
+        group.add(fiber);
+
+        // Layer edge ring
+        const ringGeo = new THREE.RingGeometry(width * 0.43, width * 0.45, 32);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: isHelicoid ? 0x4a9e7f : 0x555555,
+          transparent: true, opacity: 0.3, side: THREE.DoubleSide,
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.position.set(xOffset, y, 0);
+        ring.rotation.y = layerAngle;
+        ring.rotation.x = Math.PI / 2;
+        group.add(ring);
       }
 
-      // Crack lines (more cracks for standard)
-      const crackCount = type === "standard" ? 6 : 2;
-      const force = (p.showWindLoad ? p.windSpeed / 120 : 0) + (p.showEarthquake ? p.earthquakeMagnitude / 10 : 0);
-      for (let i = 0; i < crackCount; i++) {
-        const points = [];
-        const startY = height * 0.2 + Math.random() * height * 0.6;
-        const segments = 8;
-        for (let s = 0; s <= segments; s++) {
-          const frac = s / segments;
-          const x = (frac - 0.5) * width * 0.8;
-          const y = startY + (Math.random() - 0.5) * 1.5;
-          const z = depth * 0.5 + 0.01;
-          points.push(new THREE.Vector3(xOffset + x, y, z));
+      // CRACK PATHS - the key difference
+      // Helicoid: crack SPIRALS between layers (deflects at each interface)
+      // Standard: crack goes STRAIGHT through
+      const crackSegments = 40;
+      const crackPoints: any[] = [];
+
+      if (isHelicoid) {
+        // Spiral crack path - deflects at each layer boundary
+        for (let s = 0; s <= crackSegments; s++) {
+          const t = s / crackSegments;
+          const y = t * height;
+          const layerIdx = Math.floor(t * numLayers);
+          // Crack spirals outward as it deflects along each layer interface
+          const spiralAngle = (layerIdx * 15 * Math.PI) / 180;
+          const spiralRadius = 0.3 + Math.sin(t * Math.PI * 4) * 0.8;
+          const xOff = Math.sin(spiralAngle + t * 3) * spiralRadius;
+          const zOff = Math.cos(spiralAngle + t * 3) * spiralRadius;
+          crackPoints.push(new THREE.Vector3(xOffset + xOff, y, zOff));
         }
-        const crackCurve = new THREE.CatmullRomCurve3(points);
-        const crackGeo = new THREE.TubeGeometry(crackCurve, 16, 0.02 + force * 0.03, 4, false);
-        const crackMat = new THREE.MeshBasicMaterial({
-          color: type === "standard" ? 0xe05a3a : 0xc8973a,
-          transparent: true,
-          opacity: Math.min(0.8, force * 0.5 + 0.1),
+      } else {
+        // Straight crack - goes directly through all layers
+        for (let s = 0; s <= crackSegments; s++) {
+          const t = s / crackSegments;
+          const y = t * height;
+          // Minor wobble but essentially straight
+          const xOff = Math.sin(t * 0.5) * 0.08;
+          crackPoints.push(new THREE.Vector3(xOffset + xOff, y, 0.01));
+        }
+      }
+
+      const crackCurve = new THREE.CatmullRomCurve3(crackPoints);
+      const crackThickness = 0.04 + force * 0.06;
+      const crackGeo = new THREE.TubeGeometry(crackCurve, crackSegments * 2, crackThickness, 6, false);
+      const crackColor = isHelicoid ? 0x4a9e7f : 0xe05a3a;
+      const crackMat = new THREE.MeshPhongMaterial({
+        color: crackColor, transparent: true,
+        opacity: Math.min(0.9, force * 0.6 + 0.1),
+        emissive: isHelicoid ? 0x1a4a35 : 0x5a1a1a,
+        emissiveIntensity: 0.3,
+      });
+      const crackMesh = new THREE.Mesh(crackGeo, crackMat);
+      crackMesh.visible = force > 0.05;
+      crackMesh.userData = { isHelicoid, crackIndex: isHelicoid ? 0 : 1 };
+      group.add(crackMesh);
+      crackLinesRef.current.push(crackMesh);
+
+      // Secondary micro-cracks for helicoid (energy dissipation branches)
+      if (isHelicoid && force > 0.3) {
+        for (let b = 0; b < 6; b++) {
+          const branchPts: any[] = [];
+          const startT = 0.1 + (b / 6) * 0.7;
+          const startY = startT * height;
+          const layerA = (Math.floor(startT * numLayers) * 15 * Math.PI) / 180;
+          for (let bs = 0; bs <= 8; bs++) {
+            const bt = bs / 8;
+            const bAngle = layerA + bt * 0.5;
+            const bRad = bt * 0.6;
+            branchPts.push(new THREE.Vector3(
+              xOffset + Math.sin(bAngle) * bRad,
+              startY + bt * 0.3,
+              Math.cos(bAngle) * bRad
+            ));
+          }
+          const bCurve = new THREE.CatmullRomCurve3(branchPts);
+          const bGeo = new THREE.TubeGeometry(bCurve, 8, 0.015, 4, false);
+          const bMat = new THREE.MeshBasicMaterial({
+            color: 0x4a9e7f, transparent: true, opacity: force * 0.4,
+          });
+          const bMesh = new THREE.Mesh(bGeo, bMat);
+          bMesh.visible = force > 0.3;
+          bMesh.userData = { isHelicoid: true, crackIndex: b + 2 };
+          group.add(bMesh);
+          crackLinesRef.current.push(bMesh);
+        }
+      }
+
+      // Damage glow for standard at high force
+      if (!isHelicoid && force > 0.5) {
+        const glowGeo = new THREE.BoxGeometry(width * 0.3, height, depth * 0.3);
+        const glowMat = new THREE.MeshBasicMaterial({
+          color: 0xe05a3a, transparent: true, opacity: (force - 0.5) * 0.15,
         });
-        const crackMesh = new THREE.Mesh(crackGeo, crackMat);
-        crackMesh.visible = force > 0.1;
-        group.add(crackMesh);
-        crackLinesRef.current.push(crackMesh);
+        const glow = new THREE.Mesh(glowGeo, glowMat);
+        glow.position.set(xOffset, height / 2, 0);
+        group.add(glow);
       }
 
       // Labels
-      addTextSprite(THREE, group, type === "helicoid" ? "HELICOID" : "STANDARD", xOffset, height + 1.5);
-      addTextSprite(THREE, group, type === "helicoid" ? "Crack Deflection" : "Straight Crack", xOffset, -1);
+      addTextSprite(THREE, group, isHelicoid ? "HELICOID" : "STANDARD", xOffset, height + 1.5);
+      addTextSprite(THREE, group, isHelicoid ? "Crack Spirals & Deflects" : "Crack Goes Straight", xOffset, -1.2);
     };
 
     buildSpecimen(-5, "helicoid");
     buildSpecimen(5, "standard");
 
-    // Force arrow
-    const arrowGeo = new THREE.ConeGeometry(0.2, 0.8, 8);
-    const arrowMat = new THREE.MeshBasicMaterial({ color: 0xe05a3a });
+    // Force indicator
+    const arrowGeo = new THREE.ConeGeometry(0.25, 1, 8);
+    const arrowMat = new THREE.MeshPhongMaterial({
+      color: 0xe05a3a, emissive: 0x5a1a1a, emissiveIntensity: 0.5,
+    });
     const arrow = new THREE.Mesh(arrowGeo, arrowMat);
-    arrow.position.set(0, 10, 0);
+    arrow.position.set(0, 12, 0);
     arrow.rotation.z = Math.PI;
     group.add(arrow);
-    addTextSprite(THREE, group, "FORCE", 0, 11);
+    addTextSprite(THREE, group, "APPLIED FORCE", 0, 13.5);
+
+    // Divider
+    const divGeo = new THREE.PlaneGeometry(0.01, 14);
+    const divMat = new THREE.MeshBasicMaterial({ color: 0x1a2e22, side: THREE.DoubleSide, transparent: true, opacity: 0.3 });
+    const div = new THREE.Mesh(divGeo, divMat);
+    div.position.set(0, 6, 0);
+    group.add(div);
   };
 
   const buildSingleBuilding = (THREE: any, group: any, p: typeof params, xOffset: number, type: "helicoid" | "standard") => {
