@@ -91,23 +91,27 @@ const Index = () => {
   const simModeRef = useRef(simMode);
   simModeRef.current = simMode;
 
+  const liveParams = new Set(["windSpeed", "earthquakeMagnitude", "showWindLoad", "showEarthquake", "showStressMap"]);
+
   const updateParam = useCallback((key: string, value: any) => {
-    // Reset collapse when changing params
-    collapseStateRef.current = {
-      helicoidCollapsed: false,
-      standardCollapsed: false,
-      helicoidCollapseTime: 0,
-      standardCollapseTime: 0,
-      helicoidCollapseFloor: -1,
-      standardCollapseFloor: -1,
-    };
-    energyRef.current = {
-      helicoidDissipated: 0,
-      helicoidAbsorbed: 0,
-      standardDissipated: 0,
-      standardAbsorbed: 0,
-      inputEnergy: 0,
-    };
+    // Only reset collapse for structural param changes, not live controls
+    if (!liveParams.has(key)) {
+      collapseStateRef.current = {
+        helicoidCollapsed: false,
+        standardCollapsed: false,
+        helicoidCollapseTime: 0,
+        standardCollapseTime: 0,
+        helicoidCollapseFloor: -1,
+        standardCollapseFloor: -1,
+      };
+      energyRef.current = {
+        helicoidDissipated: 0,
+        helicoidAbsorbed: 0,
+        standardDissipated: 0,
+        standardAbsorbed: 0,
+        inputEnergy: 0,
+      };
+    }
     setParams((p) => ({ ...p, [key]: value }));
   }, []);
 
