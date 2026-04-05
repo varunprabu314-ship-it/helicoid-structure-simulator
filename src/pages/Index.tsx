@@ -438,11 +438,23 @@ const Index = () => {
         spawnDebris(THREE, -6, p.floors, "helicoid");
       }
 
-      // Animate wind arrows
-      arrowPoolRef.current.forEach((grp) => {
-        if (!grp.visible) return;
-        grp.position.x += (grp.userData.speed || 0.05);
-        if (grp.position.x > 8) grp.position.x = grp.userData.startX;
+      // Update wind arrows visibility and speed reactively
+      const windCount = p.showWindLoad ? Math.min(12, Math.max(3, Math.round(p.windSpeed / 20))) : 0;
+      arrowPoolRef.current.forEach((grp, i) => {
+        if (i < windCount) {
+          if (!grp.visible) {
+            grp.visible = true;
+            grp.position.y = 2 + Math.random() * (p.floors * 1.2);
+            grp.position.x = -12 + Math.random() * 4;
+            grp.position.z = -4 + Math.random() * 8;
+            grp.userData.startX = grp.position.x;
+          }
+          grp.userData.speed = (p.windSpeed / 30) * 0.04;
+          grp.position.x += (grp.userData.speed || 0.05);
+          if (grp.position.x > 8) grp.position.x = grp.userData.startX;
+        } else {
+          grp.visible = false;
+        }
       });
 
       // Wind sway - MORE DRAMATIC with progressive stress coloring
