@@ -18,7 +18,10 @@ const Index = () => {
   const seismicWavePoolRef = useRef<any[]>([]);
   const debrisPoolRef = useRef<any[]>([]);
   const crackLinesRef = useRef<any[]>([]);
-  const chartCanvasRef = useRef<HTMLCanvasElement>(null);
+  const chartCanvasRefH = useRef<HTMLCanvasElement>(null);
+  const chartCanvasRefS = useRef<HTMLCanvasElement>(null);
+  const groundRef = useRef<any>(null);
+  const gridRef = useRef<any>(null);
   const energyHistoryRef = useRef<{ time: number; helDiss: number; stdDiss: number; helAbs: number; stdAbs: number }[]>([]);
   const simTimeRef = useRef(0);
   const animFrameRef = useRef<number>(0);
@@ -257,10 +260,12 @@ const Index = () => {
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.01;
     scene.add(ground);
+    groundRef.current = ground;
 
     // Grid - green tinted
     const grid = new THREE.GridHelper(60, 30, 0x122a1e, 0x0e1f15);
     scene.add(grid);
+    gridRef.current = grid;
 
     // Arrow pool
     const arrowPool: any[] = [];
@@ -500,6 +505,22 @@ const Index = () => {
           ring.material.opacity = Math.max(0, 0.5 - phase * 0.08) * (mag / 10);
         });
 
+        // Shake ground and grid
+        if (groundRef.current && gridRef.current) {
+          const gShakeX = Math.sin(eqTime * 8) * intensity * 0.5;
+          const gShakeZ = Math.cos(eqTime * 6) * intensity * 0.5;
+          groundRef.current.position.x = gShakeX;
+          groundRef.current.position.z = gShakeZ;
+          gridRef.current.position.x = gShakeX;
+          gridRef.current.position.z = gShakeZ;
+        }
+
+        // Camera shake
+        if (cameraRef.current) {
+           cameraAngleRef.current.theta += (Math.random() - 0.5) * 0.005 * intensity;
+           cameraAngleRef.current.phi += (Math.random() - 0.5) * 0.005 * intensity;
+        }
+
         if (slabsRef.current.length > 0) {
           slabsRef.current.forEach((entry) => {
             const { mesh, edgeMesh, floorIndex, totalFloors, xOffset, type } = entry;
@@ -538,6 +559,12 @@ const Index = () => {
         }
       } else {
         seismicWavePoolRef.current.forEach((ring) => { ring.visible = false; });
+        if (groundRef.current && gridRef.current) {
+          groundRef.current.position.x = 0;
+          groundRef.current.position.z = 0;
+          gridRef.current.position.x = 0;
+          gridRef.current.position.z = 0;
+        }
         if (slabsRef.current.length > 0 && !p.showWindLoad) {
           slabsRef.current.forEach((entry) => {
             if ((entry.type === "standard" && cs.standardCollapsed) || (entry.type === "helicoid" && cs.helicoidCollapsed)) return;
@@ -637,98 +664,108 @@ const Index = () => {
   }, []);
 
   const drawEnergyChart = useCallback(() => {
-    const canvas = chartCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
     const hist = energyHistoryRef.current;
     if (hist.length < 2) return;
 
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    ctx.scale(dpr, dpr);
-    const W = rect.width;
-    const H = rect.height;
-
-    // Clear
-    ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = "#0a0f0c";
-    ctx.fillRect(0, 0, W, H);
-
-    // Border
-    ctx.strokeStyle = "rgba(74,158,127,0.12)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
-
-    const pad = { top: 30, right: 20, bottom: 30, left: 50 };
-    const plotW = W - pad.left - pad.right;
-    const plotH = H - pad.top - pad.bottom;
-
-    // Find max value
+    // Find max value globally to keep Y axis synchronized
     let maxVal = 1;
     hist.forEach((d) => {
       maxVal = Math.max(maxVal, d.helDiss, d.stdDiss, d.helAbs, d.stdAbs);
     });
     maxVal *= 1.1;
 
-    // Grid lines
-    ctx.strokeStyle = "rgba(74,158,127,0.06)";
-    ctx.lineWidth = 0.5;
-    for (let i = 0; i <= 4; i++) {
-      const y = pad.top + (plotH / 4) * i;
-      ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + plotW, y); ctx.stroke();
-      ctx.fillStyle = "#1e2e26";
-      ctx.font = "9px 'JetBrains Mono', monospace";
-      ctx.textAlign = "right";
-      ctx.fillText(`${Math.round(maxVal * (1 - i / 4))}`, pad.left - 6, y + 3);
-    }
+    const drawSingleChart = (
+      canvas: HTMLCanvasElement | null, 
+      title: string, 
+      color: string, 
+      dissKey: "helDiss"|"stdDiss", 
+      absKey: "helAbs"|"stdAbs"
+    ) => {
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
 
-    // Draw lines
-    const drawLine = (key: "helDiss" | "stdDiss" | "helAbs" | "stdAbs", color: string, dash?: number[]) => {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+      const W = rect.width;
+      const H = rect.height;
+
+      // Clear
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = "#0a0f0c";
+      ctx.fillRect(0, 0, W, H);
+
+      // Border
+      ctx.strokeStyle = "rgba(74,158,127,0.12)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
+
+      const pad = { top: 30, right: 20, bottom: 30, left: 50 };
+      const plotW = W - pad.left - pad.right;
+      const plotH = H - pad.top - pad.bottom;
+
+      // Grid lines
+      ctx.strokeStyle = "rgba(74,158,127,0.06)";
+      ctx.lineWidth = 0.5;
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.top + (plotH / 4) * i;
+        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + plotW, y); ctx.stroke();
+        ctx.fillStyle = "#1e2e26";
+        ctx.font = "9px 'JetBrains Mono', monospace";
+        ctx.textAlign = "right";
+        ctx.fillText(`${Math.round(maxVal * (1 - i / 4))}`, pad.left - 6, y + 3);
+      }
+
+      // Draw lines
+      const drawLine = (key: "helDiss" | "stdDiss" | "helAbs" | "stdAbs", lineColor: string, dash?: number[]) => {
+        ctx.strokeStyle = lineColor;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash(dash || []);
+        ctx.beginPath();
+        hist.forEach((d, i) => {
+          const x = pad.left + (i / (hist.length - 1)) * plotW;
+          const y = pad.top + plotH - (d[key] / maxVal) * plotH;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+        ctx.setLineDash([]);
+      };
+
+      drawLine(dissKey, color);
+      drawLine(absKey, color, [4, 4]);
+
+      // Title
+      ctx.fillStyle = color;
+      ctx.font = "10px 'JetBrains Mono', monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(title, pad.left, 16);
+
+      // Legend
+      const legendX = W - 150;
+      ctx.fillStyle = color; ctx.fillRect(legendX, 8, 12, 2);
+      ctx.fillStyle = "#4a6b5c"; ctx.font = "9px 'JetBrains Mono', monospace";
+      ctx.fillText("Dissipated", legendX + 16, 12);
+      
+      ctx.setLineDash([4, 4]);
       ctx.strokeStyle = color;
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash(dash || []);
-      ctx.beginPath();
-      hist.forEach((d, i) => {
-        const x = pad.left + (i / (hist.length - 1)) * plotW;
-        const y = pad.top + plotH - (d[key] / maxVal) * plotH;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      });
-      ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(legendX, 23); ctx.lineTo(legendX + 12, 23); ctx.stroke();
       ctx.setLineDash([]);
+      ctx.fillText("Absorbed", legendX + 16, 26);
+
+      // X/Y labels
+      ctx.fillStyle = "#1e2e26";
+      ctx.textAlign = "center";
+      ctx.fillText("Time →", pad.left + plotW / 2, H - 6);
+      ctx.textAlign = "left";
+      ctx.fillText("kJ", 4, pad.top + plotH / 2);
     };
 
-    drawLine("helDiss", "#4a9e7f");
-    drawLine("stdDiss", "#e05a3a");
-    drawLine("helAbs", "#4a9e7f", [4, 4]);
-    drawLine("stdAbs", "#e05a3a", [4, 4]);
-
-    // Title
-    ctx.fillStyle = "#4a6b5c";
-    ctx.font = "10px 'JetBrains Mono', monospace";
-    ctx.textAlign = "left";
-    ctx.fillText("ENERGY OVER TIME (kJ)", pad.left, 16);
-
-    // Legend
-    const legendX = W - 200;
-    ctx.fillStyle = "#4a9e7f"; ctx.fillRect(legendX, 8, 12, 2);
-    ctx.fillStyle = "#4a6b5c"; ctx.font = "9px 'JetBrains Mono', monospace";
-    ctx.fillText("Helicoid (dissipated)", legendX + 16, 12);
-    ctx.fillStyle = "#e05a3a"; ctx.fillRect(legendX, 20, 12, 2);
-    ctx.fillStyle = "#4a6b5c";
-    ctx.fillText("Standard (dissipated)", legendX + 16, 24);
-
-    // X axis label
-    ctx.fillStyle = "#1e2e26";
-    ctx.textAlign = "center";
-    ctx.fillText("Time →", pad.left + plotW / 2, H - 6);
-
-    // Unit
-    ctx.textAlign = "left";
-    ctx.fillText("kJ", 4, pad.top + plotH / 2);
+    drawSingleChart(chartCanvasRefH.current, "HELICOID ENERGY (Slower Collapse)", "#4a9e7f", "helDiss", "helAbs");
+    drawSingleChart(chartCanvasRefS.current, "STANDARD ENERGY (Faster Collapse)", "#e05a3a", "stdDiss", "stdAbs");
   }, []);
 
   const spawnDebris = (THREE: any, xCenter: number, floors: number, _type: string) => {
@@ -1365,8 +1402,11 @@ const Index = () => {
               </span>
             </div>
             <input type="range" className="sim-slider" min={0} max={200} step={5}
-              value={params.windSpeed} disabled={!params.showWindLoad}
-              onChange={(e) => updateParam("windSpeed", parseInt(e.target.value))} />
+              value={params.windSpeed}
+              onChange={(e) => {
+                const val = parseInt(e.target.value);
+                setParams(p => ({ ...p, windSpeed: val, showWindLoad: val > 0 }));
+              }} />
           </div>
 
           {/* Earthquake */}
@@ -1385,8 +1425,11 @@ const Index = () => {
               </span>
             </div>
             <input type="range" className="sim-slider" min={2} max={9} step={0.5}
-              value={params.earthquakeMagnitude} disabled={!params.showEarthquake}
-              onChange={(e) => updateParam("earthquakeMagnitude", parseFloat(e.target.value))} />
+              value={params.earthquakeMagnitude}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                setParams(p => ({ ...p, earthquakeMagnitude: val, showEarthquake: val > 2 }));
+              }} />
             {params.showEarthquake && (
               <div style={{ fontSize: 11, color: "#1e2e26", marginTop: 4, fontFamily: "'JetBrains Mono', monospace" }}>
                 {params.earthquakeMagnitude < 4 ? "Minor" : params.earthquakeMagnitude < 6 ? "Moderate" : params.earthquakeMagnitude < 7.5 ? "Strong" : "Major"} seismic event
@@ -1485,24 +1528,31 @@ const Index = () => {
 
       {/* Energy Chart */}
       <section style={{ padding: "0 32px 40px", maxWidth: 1200, margin: "0 auto" }}>
-        <canvas
-          ref={chartCanvasRef}
-          style={{
-            width: "100%",
-            height: 200,
-            borderRadius: 8,
-            border: "1px solid rgba(74,158,127,0.12)",
-            background: "#0a0f0c",
-          }}
-        />
-        <div style={{
-          display: "flex", justifyContent: "center", gap: 24, marginTop: 8,
-          fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color: "#4a6b5c",
-        }}>
-          <span>━ solid = dissipated</span>
-          <span>╌ dashed = absorbed</span>
-          <span style={{ color: "#4a9e7f" }}>● helicoid</span>
-          <span style={{ color: "#e05a3a" }}>● standard</span>
+        <div style={{ display: "flex", gap: "24px", flexWrap: "wrap", justifyContent: "center" }}>
+          <div style={{ flex: "1 1 calc(50% - 12px)", minWidth: 280 }}>
+            <canvas
+              ref={chartCanvasRefH}
+              style={{
+                width: "100%",
+                height: 200,
+                borderRadius: 8,
+                border: "1px solid rgba(74,158,127,0.12)",
+                background: "#0a0f0c",
+              }}
+            />
+          </div>
+          <div style={{ flex: "1 1 calc(50% - 12px)", minWidth: 280 }}>
+            <canvas
+              ref={chartCanvasRefS}
+              style={{
+                width: "100%",
+                height: 200,
+                borderRadius: 8,
+                border: "1px solid rgba(74,158,127,0.12)",
+                background: "#0a0f0c",
+              }}
+            />
+          </div>
         </div>
       </section>
 
