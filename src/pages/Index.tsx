@@ -91,23 +91,27 @@ const Index = () => {
   const simModeRef = useRef(simMode);
   simModeRef.current = simMode;
 
+  const liveParams = new Set(["windSpeed", "earthquakeMagnitude", "showWindLoad", "showEarthquake", "showStressMap"]);
+
   const updateParam = useCallback((key: string, value: any) => {
-    // Reset collapse when changing params
-    collapseStateRef.current = {
-      helicoidCollapsed: false,
-      standardCollapsed: false,
-      helicoidCollapseTime: 0,
-      standardCollapseTime: 0,
-      helicoidCollapseFloor: -1,
-      standardCollapseFloor: -1,
-    };
-    energyRef.current = {
-      helicoidDissipated: 0,
-      helicoidAbsorbed: 0,
-      standardDissipated: 0,
-      standardAbsorbed: 0,
-      inputEnergy: 0,
-    };
+    // Only reset collapse for structural param changes, not live controls
+    if (!liveParams.has(key)) {
+      collapseStateRef.current = {
+        helicoidCollapsed: false,
+        standardCollapsed: false,
+        helicoidCollapseTime: 0,
+        standardCollapseTime: 0,
+        helicoidCollapseFloor: -1,
+        standardCollapseFloor: -1,
+      };
+      energyRef.current = {
+        helicoidDissipated: 0,
+        helicoidAbsorbed: 0,
+        standardDissipated: 0,
+        standardAbsorbed: 0,
+        inputEnergy: 0,
+      };
+    }
     setParams((p) => ({ ...p, [key]: value }));
   }, []);
 
@@ -434,11 +438,23 @@ const Index = () => {
         spawnDebris(THREE, -6, p.floors, "helicoid");
       }
 
-      // Animate wind arrows
-      arrowPoolRef.current.forEach((grp) => {
-        if (!grp.visible) return;
-        grp.position.x += (grp.userData.speed || 0.05);
-        if (grp.position.x > 8) grp.position.x = grp.userData.startX;
+      // Update wind arrows visibility and speed reactively
+      const windCount = p.showWindLoad ? Math.min(12, Math.max(3, Math.round(p.windSpeed / 20))) : 0;
+      arrowPoolRef.current.forEach((grp, i) => {
+        if (i < windCount) {
+          if (!grp.visible) {
+            grp.visible = true;
+            grp.position.y = 2 + Math.random() * (p.floors * 1.2);
+            grp.position.x = -12 + Math.random() * 4;
+            grp.position.z = -4 + Math.random() * 8;
+            grp.userData.startX = grp.position.x;
+          }
+          grp.userData.speed = (p.windSpeed / 30) * 0.04;
+          grp.position.x += (grp.userData.speed || 0.05);
+          if (grp.position.x > 8) grp.position.x = grp.userData.startX;
+        } else {
+          grp.visible = false;
+        }
       });
 
       // Wind sway - MORE DRAMATIC with progressive stress coloring
@@ -810,13 +826,21 @@ const Index = () => {
     }
   };
 
-  // Rebuild building
+  // Rebuild building only for structural params
+  const structuralKey = `${params.floors}-${params.twistPerFloor}-${params.floorPlateSize}-${params.structureType}-${simMode}`;
+  const prevStructuralKeyRef = useRef(structuralKey);
+
   useEffect(() => {
-    if (rebuildTimeoutRef.current) clearTimeout(rebuildTimeoutRef.current);
-    rebuildTimeoutRef.current = setTimeout(() => {
-      rebuildBuilding(params);
-      computeMetrics();
-    }, 16);
+    // Always recompute metrics
+    computeMetrics();
+    // Only rebuild geometry if structural params changed
+    if (prevStructuralKeyRef.current !== structuralKey) {
+      prevStructuralKeyRef.current = structuralKey;
+      if (rebuildTimeoutRef.current) clearTimeout(rebuildTimeoutRef.current);
+      rebuildTimeoutRef.current = setTimeout(() => {
+        rebuildBuilding(params);
+      }, 16);
+    }
   }, [params, simMode]);
 
   const rebuildBuilding = (p: typeof params) => {
