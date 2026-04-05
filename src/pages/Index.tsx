@@ -814,13 +814,21 @@ const Index = () => {
     }
   };
 
-  // Rebuild building
+  // Rebuild building only for structural params
+  const structuralKey = `${params.floors}-${params.twistPerFloor}-${params.floorPlateSize}-${params.structureType}-${simMode}`;
+  const prevStructuralKeyRef = useRef(structuralKey);
+
   useEffect(() => {
-    if (rebuildTimeoutRef.current) clearTimeout(rebuildTimeoutRef.current);
-    rebuildTimeoutRef.current = setTimeout(() => {
-      rebuildBuilding(params);
-      computeMetrics();
-    }, 16);
+    // Always recompute metrics
+    computeMetrics();
+    // Only rebuild geometry if structural params changed
+    if (prevStructuralKeyRef.current !== structuralKey) {
+      prevStructuralKeyRef.current = structuralKey;
+      if (rebuildTimeoutRef.current) clearTimeout(rebuildTimeoutRef.current);
+      rebuildTimeoutRef.current = setTimeout(() => {
+        rebuildBuilding(params);
+      }, 16);
+    }
   }, [params, simMode]);
 
   const rebuildBuilding = (p: typeof params) => {
