@@ -184,8 +184,18 @@ const Index = () => {
     const windForce = p.showWindLoad ? (p.windSpeed / 120) : 0;
     const eqForce = p.showEarthquake ? (p.earthquakeMagnitude / 10) : 0;
     const totalForce = windForce + eqForce;
-    const stdIntegrity = Math.max(0, Math.round((1 - totalForce * 0.8) * 100));
-    const helIntegrity = Math.max(0, Math.round((1 - totalForce * 0.35) * 100));
+    
+    // Dynamic thresholds based on floors and twist
+    const heightPenaltyStd = Math.max(0, (p.floors - 5) * 0.04);
+    const stdCollapseThreshold = Math.max(0.4, 1.3 - heightPenaltyStd);
+    
+    const heightPenaltyHel = Math.max(0, (p.floors - 5) * 0.02);
+    const twistStrength = Math.min(1.0, p.twistPerFloor / 12) * 0.8;
+    const helCollapseThreshold = Math.max(0.5, 1.3 - heightPenaltyHel + twistStrength);
+
+    // Compute integrity scaled by their respective thresholds
+    const stdIntegrity = Math.max(0, Math.round((1 - totalForce / stdCollapseThreshold) * 100));
+    const helIntegrity = Math.max(0, Math.round((1 - totalForce / helCollapseThreshold) * 100));
 
     let collapseStatus = "";
     if (cs.standardCollapsed && !cs.helicoidCollapsed) collapseStatus = "STANDARD COLLAPSED";
@@ -425,10 +435,13 @@ const Index = () => {
         en.standardAbsorbed += inputPower * 0.7 * dt;
       }
 
-      // Check collapse thresholds
-      // Standard collapses at lower force
-      const stdCollapseThreshold = 1.1;
-      const helCollapseThreshold = 1.7;
+      // Check collapse thresholds dynamically based on height and twist
+      const heightPenaltyStd = Math.max(0, (p.floors - 5) * 0.04);
+      const stdCollapseThreshold = Math.max(0.4, 1.3 - heightPenaltyStd);
+      
+      const heightPenaltyHel = Math.max(0, (p.floors - 5) * 0.02);
+      const twistStrength = Math.min(1.0, p.twistPerFloor / 12) * 0.8;
+      const helCollapseThreshold = Math.max(0.5, 1.3 - heightPenaltyHel + twistStrength);
 
       if (totalForce > stdCollapseThreshold && !cs.standardCollapsed) {
         cs.standardCollapsed = true;
@@ -470,21 +483,22 @@ const Index = () => {
           if ((type === "standard" && cs.standardCollapsed) || (type === "helicoid" && cs.helicoidCollapsed)) return;
           const t = totalFloors > 0 ? floorIndex / totalFloors : 0;
           // Much larger deflection for visible effect
-          const windIntensity = p.windSpeed / 120;
-          const baseDefl = windIntensity * 0.6 * t * Math.sin(windFreqRef.current + floorIndex * 0.1);
-          const secondaryOsc = windIntensity * 0.15 * t * Math.sin(windFreqRef.current * 2.7 + floorIndex * 0.3);
+          const windIntensity = p.windSpeed > 0 ? Math.pow(p.windSpeed / 120, 0.5) * 1.5 : 0;
+          const baseDefl = windIntensity * 0.8 * Math.pow(t, 1.2) * Math.sin(windFreqRef.current + floorIndex * 0.12);
+          const secondaryOsc = windIntensity * 0.25 * t * Math.sin(windFreqRef.current * 3.1 + floorIndex * 0.3);
+          const tertiaryOsc = windIntensity * 0.1 * t * Math.sin(windFreqRef.current * 5.7 + floorIndex * 0.5);
           const dampingFactor = type === "standard" ? 1.0 : 0.35;
-          const deflection = (baseDefl + secondaryOsc) * dampingFactor;
+          const deflection = (baseDefl + secondaryOsc + tertiaryOsc) * dampingFactor;
           mesh.position.x = xOffset + deflection;
           edgeMesh.position.x = xOffset + deflection;
           
           // Progressive stress coloring under wind load
-          if (mesh.material && windIntensity > 0.3) {
+          if (mesh.material && windIntensity > 0.1) {
             const stressLevel = windIntensity * t * (type === "standard" ? 1.0 : 0.4);
-            if (stressLevel > 0.5) {
+            if (stressLevel > 0.2) {
               mesh.material.emissive = mesh.material.emissive || new THREE.Color();
               mesh.material.emissive.setHex(type === "standard" ? 0x5a1a0a : 0x0a3a2a);
-              mesh.material.emissiveIntensity = Math.min(0.5, (stressLevel - 0.3) * 0.6);
+              mesh.material.emissiveIntensity = Math.min(0.5, (stressLevel - 0.2) * 0.6);
             }
           }
         });
