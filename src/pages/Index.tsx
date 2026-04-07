@@ -18,6 +18,11 @@ const Index = () => {
   const seismicWavePoolRef = useRef<any[]>([]);
   const debrisPoolRef = useRef<any[]>([]);
   const crackLinesRef = useRef<any[]>([]);
+  const structuralCracksRef = useRef<any[]>([]);
+  const crackPhysicsRef = useRef({
+    helicoid: { progress: 0, stressIntensity: 0, growthRate: 0, initiated: false, peakStress: 0 },
+    standard: { progress: 0, stressIntensity: 0, growthRate: 0, initiated: false, peakStress: 0 },
+  });
   const chartCanvasRefH = useRef<HTMLCanvasElement>(null);
   const chartCanvasRefS = useRef<HTMLCanvasElement>(null);
   const groundRef = useRef<any>(null);
@@ -113,6 +118,10 @@ const Index = () => {
         standardDissipated: 0,
         standardAbsorbed: 0,
         inputEnergy: 0,
+      };
+      crackPhysicsRef.current = {
+        helicoid: { progress: 0, stressIntensity: 0, growthRate: 0, initiated: false, peakStress: 0 },
+        standard: { progress: 0, stressIntensity: 0, growthRate: 0, initiated: false, peakStress: 0 },
       };
     }
     setParams((p) => ({ ...p, [key]: value }));
@@ -629,6 +638,11 @@ const Index = () => {
         }
       });
 
+      // Structural crack propagation physics (real-time)
+      if (simModeRef.current === "structural") {
+        updateStructuralCrackPhysics(totalForce, windForce, eqForce);
+      }
+
       // Crack deflection mode animation
       if (simModeRef.current === "crack") {
         animateCrackDeflection(eqTime || windFreqRef.current);
@@ -877,6 +891,166 @@ const Index = () => {
     }
   };
 
+  const updateStructuralCrackPhysics = (totalForce: number, windForce: number, eqForce: number) => {
+    const p = paramsRef.current;
+    const dt = 0.016;
+    const cp = crackPhysicsRef.current;
+    const floors = p.floors;
+    const height = floors * 1.0;
+
+    // Combined stress - responsive to ANY force input
+    const windStress = windForce * 2.0;
+    const eqStress = eqForce * 2.5;
+    const equivalentStress = Math.sqrt(windStress * windStress + eqStress * eqStress + windStress * eqStress);
+    const hasForce = equivalentStress > 0.01;
+
+    // Compute average building displacement so cracks move with the structure
+    const avgDisp: Record<string, { x: number; z: number; count: number }> = {
+      helicoid: { x: 0, z: 0, count: 0 },
+      standard: { x: 0, z: 0, count: 0 },
+    };
+    slabsRef.current.forEach((entry) => {
+      const t = entry.type as string;
+      if (avgDisp[t]) {
+        avgDisp[t].x += (entry.mesh.position.x - entry.xOffset);
+        avgDisp[t].z += entry.mesh.position.z;
+        avgDisp[t].count++;
+      }
+    });
+    Object.values(avgDisp).forEach((d) => {
+      if (d.count > 0) { d.x /= d.count; d.z /= d.count; }
+    });
+
+    // Process crack physics for each structure type
+    (["helicoid", "standard"] as const).forEach((type) => {
+      const state = cp[type];
+      const isHel = type === "helicoid";
+
+      state.peakStress = Math.max(state.peakStress, equivalentStress);
+
+      // INSTANT crack initiation - any force triggers cracks immediately
+      if (!state.initiated && hasForce) {
+        state.initiated = true;
+        state.progress = 0.01;
+      }
+
+      // Reset if forces removed completely
+      if (!hasForce && !p.showWindLoad && !p.showEarthquake) {
+        state.initiated = false;
+        state.progress = 0;
+        state.stressIntensity = 0;
+        state.growthRate = 0;
+        return;
+      }
+
+      if (state.initiated && hasForce) {
+        // Stress Intensity Factor
+        const Y = isHel ? 0.8 : 1.12;
+        const crackLen = Math.max(0.01, state.progress);
+        state.stressIntensity = Y * equivalentStress * Math.sqrt(Math.PI * crackLen);
+
+        // Paris-Erdogan crack growth: da/dt = C × K^m
+        const C = isHel ? 0.02 : 0.08;
+        const m = isHel ? 1.6 : 2.0;
+        let growth = C * Math.pow(Math.max(0.01, state.stressIntensity), m);
+
+        // Helicoid: crack deflection at each layer interface absorbs energy
+        if (isHel) {
+          const layerInterfaces = state.progress * floors;
+          const deflectionDamping = 0.12 + 0.5 * Math.pow(Math.sin(layerInterfaces * Math.PI), 2);
+          growth *= deflectionDamping;
+          growth *= 1.0 / (1.0 + p.twistPerFloor * 0.03);
+        }
+
+        // Earthquake cyclic loading accelerates fatigue
+        if (eqForce > 0.2) growth *= isHel ? 1.1 : 1.6;
+
+        state.growthRate = growth;
+        state.progress = Math.min(1.0, state.progress + growth * dt);
+      }
+    });
+
+    // === UPDATE CRACK VISUALS - sync with building movement ===
+    const time = Date.now() * 0.001;
+    structuralCracksRef.current.forEach((crack) => {
+      if (!crack.userData) return;
+      const cType = crack.userData.crackType as "helicoid" | "standard";
+      const state = cp[cType];
+      if (!state) return;
+      const isHel = cType === "helicoid";
+      const disp = avgDisp[cType] || { x: 0, z: 0 };
+
+      // Crack tip glow sphere
+      if (crack.userData.isTip) {
+        if (state.initiated && state.progress > 0.01 && state.progress < 0.95) {
+          crack.visible = true;
+          const tipY = state.progress * height;
+          const xOff = crack.userData.xOffset || 0;
+          if (isHel) {
+            const twistRad = p.twistPerFloor * (Math.PI / 180);
+            const angle = state.progress * floors * twistRad;
+            const r = 0.4 * p.floorPlateSize;
+            crack.position.set(xOff + Math.sin(angle) * r + disp.x, tipY, Math.cos(angle) * r + disp.z);
+          } else {
+            crack.position.set(xOff + disp.x, tipY, 0.3 * p.floorPlateSize + disp.z);
+          }
+          const pulse = 0.4 + Math.sin(time * 8) * 0.5;
+          crack.material.opacity = pulse * Math.min(1, equivalentStress * 1.5 + 0.3);
+          const scale = 1.2 + Math.sin(time * 6) * 0.4;
+          crack.scale.set(scale, scale, scale);
+        } else {
+          crack.visible = false;
+        }
+        return;
+      }
+
+      // Apply building displacement to crack meshes so they sway with the structure
+      crack.position.x = disp.x;
+      crack.position.z = disp.z;
+
+      if (state.initiated && state.progress > 0.005) {
+        crack.visible = true;
+
+        if (crack.userData.isMain) {
+          // Progressive reveal via draw range
+          const total = crack.userData.totalIndexCount;
+          if (total > 0 && crack.geometry) {
+            crack.geometry.setDrawRange(0, Math.floor(state.progress * total));
+          }
+          // Opacity scales with progress and force
+          crack.material.opacity = Math.min(0.92, state.progress * 1.2 + equivalentStress * 0.3 + 0.1);
+          const stressPulse = 1 + Math.sin(time * 4 + (crack.userData.crackIndex || 0)) * 0.15;
+          crack.material.emissiveIntensity = Math.min(0.8, equivalentStress * 0.5 * stressPulse);
+
+          // Thickness pulse under active stress
+          if (equivalentStress > 0.1) {
+            const tp = 1 + Math.sin(time * 5) * 0.06 * equivalentStress;
+            crack.scale.set(tp, 1, tp);
+          }
+        } else {
+          // Branch cracks appear when main crack reaches their floor
+          const branchFloorT = (crack.userData.floorIndex || 0) / floors;
+          if (state.progress > branchFloorT) {
+            const branchProgress = Math.min(1, (state.progress - branchFloorT) * 4);
+            const total = crack.userData.totalIndexCount;
+            if (total > 0 && crack.geometry) {
+              crack.geometry.setDrawRange(0, Math.floor(branchProgress * total));
+            }
+            crack.material.opacity = Math.min(0.6, branchProgress * 0.6 + 0.1);
+          } else {
+            crack.visible = false;
+          }
+        }
+      } else {
+        crack.visible = false;
+        if (crack.geometry && crack.userData.totalIndexCount) {
+          crack.geometry.setDrawRange(0, 0);
+        }
+        crack.material.opacity = 0;
+      }
+    });
+  };
+
   // Rebuild building only for structural params
   const structuralKey = `${params.floors}-${params.twistPerFloor}-${params.floorPlateSize}-${params.structureType}-${simMode}`;
   const prevStructuralKeyRef = useRef(structuralKey);
@@ -910,6 +1084,11 @@ const Index = () => {
     slabsRef.current = [];
     columnsRef.current = [];
     crackLinesRef.current = [];
+    structuralCracksRef.current = [];
+    crackPhysicsRef.current = {
+      helicoid: { progress: 0, stressIntensity: 0, growthRate: 0, initiated: false, peakStress: 0 },
+      standard: { progress: 0, stressIntensity: 0, growthRate: 0, initiated: false, peakStress: 0 },
+    };
 
     if (pointLightRef.current) pointLightRef.current.intensity = p.showStressMap ? 0.2 : 0.6;
 
@@ -926,6 +1105,7 @@ const Index = () => {
 
     offsets.forEach((xOffset, idx) => {
       buildSingleBuilding(THREE, group, p, xOffset, types[idx]);
+      buildStructuralCracks(THREE, group, p, xOffset, types[idx]);
     });
 
     if (isSplit) {
@@ -1195,6 +1375,132 @@ const Index = () => {
         columnsRef.current.push(col);
       }
     }
+  };
+
+  const buildStructuralCracks = (THREE: any, group: any, p: typeof params, xOffset: number, type: "helicoid" | "standard") => {
+    const floors = p.floors;
+    const height = floors * 1.0;
+    const isHelicoid = type === "helicoid";
+    const twistRad = isHelicoid ? p.twistPerFloor * (Math.PI / 180) : 0;
+    const size = p.floorPlateSize;
+
+    // === MAIN CRACK PATHS ===
+    const crackCount = isHelicoid ? 2 : 3;
+    for (let ci = 0; ci < crackCount; ci++) {
+      const segments = floors * 10;
+      const mainPts: any[] = [];
+      const phaseOffset = ci * Math.PI * 0.6;
+
+      if (isHelicoid) {
+        // Spiral crack path - deflects at each layer following Bouligand rotation
+        for (let s = 0; s <= segments; s++) {
+          const t = s / segments;
+          const y = t * height;
+          const floorIdx = t * floors;
+          const angle = floorIdx * twistRad + phaseOffset;
+          const baseRadius = 0.35 + ci * 0.4;
+          const deflectionOsc = Math.sin(t * Math.PI * floors * 0.5) * 0.2;
+          const spiralR = (baseRadius + deflectionOsc) * size;
+          mainPts.push(new THREE.Vector3(
+            xOffset + Math.sin(angle) * spiralR,
+            y,
+            Math.cos(angle) * spiralR
+          ));
+        }
+      } else {
+        // Straight vertical crack - cuts right through
+        const lateralOffset = (ci - 1) * 0.7 * size;
+        for (let s = 0; s <= segments; s++) {
+          const t = s / segments;
+          const y = t * height;
+          const wobble = Math.sin(t * 3.7 + ci * 2.1) * 0.03;
+          mainPts.push(new THREE.Vector3(
+            xOffset + lateralOffset + wobble,
+            y,
+            0.25 * size * (ci === 1 ? 1 : -0.3)
+          ));
+        }
+      }
+
+      const curve = new THREE.CatmullRomCurve3(mainPts);
+      const thickness = isHelicoid ? 0.025 : 0.045;
+      const tubeGeo = new THREE.TubeGeometry(curve, segments * 2, thickness, 6, false);
+      const crackColor = isHelicoid ? 0x4a9e7f : 0xff3a1a;
+      const crackMat = new THREE.MeshPhongMaterial({
+        color: crackColor,
+        transparent: true,
+        opacity: 0,
+        emissive: isHelicoid ? 0x2a6b4a : 0xaa2010,
+        emissiveIntensity: 0,
+      });
+      const mainCrack = new THREE.Mesh(tubeGeo, crackMat);
+      mainCrack.userData = {
+        crackType: type, isMain: true, crackIndex: ci, xOffset,
+        totalIndexCount: tubeGeo.index ? tubeGeo.index.count : 0,
+      };
+      if (tubeGeo.index) tubeGeo.setDrawRange(0, 0);
+      group.add(mainCrack);
+      structuralCracksRef.current.push(mainCrack);
+    }
+
+    // === BRANCH / MICRO-CRACKS at floor interfaces ===
+    const branchInterval = isHelicoid ? 2 : 3;
+    for (let f = branchInterval; f < floors; f += branchInterval) {
+      const y = f * 1.0;
+      const branchPts: any[] = [];
+
+      if (isHelicoid) {
+        const layerAngle = f * twistRad;
+        for (let b = 0; b <= 10; b++) {
+          const bt = b / 10;
+          const bAngle = layerAngle + bt * 1.2;
+          const bR = bt * 0.6 * size;
+          branchPts.push(new THREE.Vector3(
+            xOffset + Math.sin(bAngle) * bR,
+            y + bt * 0.2 * (f % 4 < 2 ? 1 : -1),
+            Math.cos(bAngle) * bR
+          ));
+        }
+      } else {
+        const dir = f % 2 === 0 ? 1 : -1;
+        for (let b = 0; b <= 6; b++) {
+          const bt = b / 6;
+          branchPts.push(new THREE.Vector3(
+            xOffset + bt * 1.4 * dir * size,
+            y + Math.sin(bt * Math.PI) * 0.12,
+            0.25 * size + bt * 0.08
+          ));
+        }
+      }
+
+      if (branchPts.length >= 2) {
+        const bCurve = new THREE.CatmullRomCurve3(branchPts);
+        const bGeo = new THREE.TubeGeometry(bCurve, 10, 0.012, 4, false);
+        const bMat = new THREE.MeshBasicMaterial({
+          color: isHelicoid ? 0x4a9e7f : 0xe05a3a,
+          transparent: true, opacity: 0,
+        });
+        const bMesh = new THREE.Mesh(bGeo, bMat);
+        bMesh.userData = {
+          crackType: type, isMain: false, floorIndex: f, xOffset,
+          totalIndexCount: bGeo.index ? bGeo.index.count : 0,
+        };
+        if (bGeo.index) bGeo.setDrawRange(0, 0);
+        group.add(bMesh);
+        structuralCracksRef.current.push(bMesh);
+      }
+    }
+
+    // === CRACK TIP GLOW MARKER ===
+    const glowGeo = new THREE.SphereGeometry(isHelicoid ? 0.08 : 0.12, 8, 8);
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: isHelicoid ? 0x4a9e7f : 0xff5030,
+      transparent: true, opacity: 0,
+    });
+    const glowSphere = new THREE.Mesh(glowGeo, glowMat);
+    glowSphere.userData = { crackType: type, isTip: true, xOffset };
+    group.add(glowSphere);
+    structuralCracksRef.current.push(glowSphere);
   };
 
   const updateWindArrows = (THREE: any, p: typeof params) => {
@@ -1530,6 +1836,57 @@ const Index = () => {
               </div>
             </div>
           </div>
+
+          <div style={{ height: 1, background: "rgba(74,158,127,0.08)", marginBottom: 14 }} />
+
+          {/* Crack Propagation Metrics - always visible in structural mode */}
+          {simMode === "structural" && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: "#4a9e7f", letterSpacing: "0.08em", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: crackPhysicsRef.current.standard.initiated || crackPhysicsRef.current.helicoid.initiated ? "#e05a3a" : "#1e2e26", boxShadow: crackPhysicsRef.current.standard.initiated ? "0 0 6px #e05a3a" : "none", animation: crackPhysicsRef.current.standard.initiated ? "pulse 1s ease-in-out infinite" : "none" }} />
+                CRACK PROPAGATION
+              </div>
+
+              {/* Helicoid Crack Data */}
+              <div style={{ padding: "6px 8px", background: "rgba(74,158,127,0.04)", borderRadius: 4, border: "1px solid rgba(74,158,127,0.1)", marginBottom: 8 }}>
+                <div style={{ fontSize: 9, color: "#4a9e7f", marginBottom: 4, fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.06em" }}>HELICOID — Spiral Path</div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: "#4a9e7f", fontFamily: "'JetBrains Mono', monospace" }}>
+                    {(crackPhysicsRef.current.helicoid.progress * 100).toFixed(1)}%
+                  </div>
+                  <div style={{ fontSize: 8, color: "#2a5a45", fontFamily: "'JetBrains Mono', monospace" }}>
+                    K={crackPhysicsRef.current.helicoid.stressIntensity.toFixed(2)}
+                  </div>
+                </div>
+                <div style={{ height: 3, borderRadius: 2, background: "#0d1a14", marginTop: 4, overflow: "hidden" }}>
+                  <div style={{ height: "100%", borderRadius: 2, background: "linear-gradient(90deg, #2a6b4a, #4a9e7f)", width: `${crackPhysicsRef.current.helicoid.progress * 100}%`, transition: "width 0.3s", boxShadow: "0 0 4px #4a9e7f" }} />
+                </div>
+              </div>
+
+              {/* Standard Crack Data */}
+              <div style={{ padding: "6px 8px", background: "rgba(224,90,58,0.04)", borderRadius: 4, border: "1px solid rgba(224,90,58,0.1)", marginBottom: 8 }}>
+                <div style={{ fontSize: 9, color: "#e05a3a", marginBottom: 4, fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.06em" }}>STANDARD — Straight Path</div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: crackPhysicsRef.current.standard.progress > 0.5 ? "#e05a3a" : "#c8973a", fontFamily: "'JetBrains Mono', monospace" }}>
+                    {(crackPhysicsRef.current.standard.progress * 100).toFixed(1)}%
+                  </div>
+                  <div style={{ fontSize: 8, color: "#5a3020", fontFamily: "'JetBrains Mono', monospace" }}>
+                    K={crackPhysicsRef.current.standard.stressIntensity.toFixed(2)}
+                  </div>
+                </div>
+                <div style={{ height: 3, borderRadius: 2, background: "#1a0d0a", marginTop: 4, overflow: "hidden" }}>
+                  <div style={{ height: "100%", borderRadius: 2, background: "linear-gradient(90deg, #c8973a, #e05a3a)", width: `${crackPhysicsRef.current.standard.progress * 100}%`, transition: "width 0.3s", boxShadow: "0 0 4px #e05a3a" }} />
+                </div>
+              </div>
+
+              {/* Comparative analysis */}
+              {crackPhysicsRef.current.standard.initiated && crackPhysicsRef.current.helicoid.initiated && (
+                <div style={{ fontSize: 9, color: "#c8973a", fontFamily: "'JetBrains Mono', monospace", padding: "4px 8px", background: "rgba(200,151,58,0.06)", borderRadius: 4, border: "1px solid rgba(200,151,58,0.12)", textAlign: "center" }}>
+                  ⚡ Standard cracks {((crackPhysicsRef.current.standard.progress / Math.max(0.001, crackPhysicsRef.current.helicoid.progress))).toFixed(1)}× faster than Helicoid
+                </div>
+              )}
+            </div>
+          )}
 
           <div style={{ height: 1, background: "rgba(74,158,127,0.08)", marginBottom: 14 }} />
 
