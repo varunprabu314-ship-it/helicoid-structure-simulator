@@ -1,5 +1,96 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 
+// Team member photos - imported from public directory
+const teamMembers = [
+  {
+    name: "VARUN PRABU",
+    rollNo: "I054",
+    photo: "/varun.png",
+    role: "Lead Developer & Simulation Engineer",
+  },
+  {
+    name: "SAI PRABHU",
+    rollNo: "I053",
+    photo: "/sai.jpg",
+    role: "Research & Documentation",
+  },
+  {
+    name: "RAYYAN RAWAL",
+    rollNo: "I056",
+    photo: "/rayyan.png",
+    role: "3D Modeling & Visualization",
+  },
+];
+
+const spiderSilkResearch = [
+  {
+    id: "01",
+    source: "SCIENCEDIRECT",
+    title: "Spider Silk-Inspired Materials – Cell Reports Physical Science",
+    url: "https://www.sciencedirect.com/science/article/pii/S2666386420301089",
+    domain: "sciencedirect.com · S2666386420301089",
+  },
+  {
+    id: "02",
+    source: "NATURE COMMUNICATIONS",
+    title: "Biomimetic Fibre Engineering – Nature 2024",
+    url: "https://www.nature.com/articles/s41467-024-48745-9",
+    domain: "nature.com · s41467-024-48745-9",
+  },
+  {
+    id: "03",
+    source: "USC ILLUMIN",
+    title: "Biomimetics: Engineering Spider Silk",
+    url: "https://illumin.usc.edu/biomimetics-engineering-spider-silk/",
+    domain: "illumin.usc.edu",
+  },
+  {
+    id: "04",
+    source: "RESEARCHGATE",
+    title: "Spider Silk-Inspired Artificial Fibers",
+    url: "https://www.researchgate.net/publication/357177514_Spider_Silk-Inspired_Artificial_Fibers",
+    domain: "researchgate.net · pub/357177514",
+  },
+  {
+    id: "05",
+    source: "SPINTEX ENGINEERING",
+    title: "Bio-inspired Silk Spinning Technology",
+    url: "https://www.spintex.co.uk/",
+    domain: "spintex.co.uk",
+  },
+];
+
+const mantisResearch = [
+  {
+    id: "06",
+    source: "SCIENCEDIRECT",
+    title: "Helicoidal Composite Structures – Mechanics & Design",
+    url: "https://www.sciencedirect.com/science/article/abs/pii/S1748013224000434",
+    domain: "sciencedirect.com · S1748013224000434",
+  },
+  {
+    id: "07",
+    source: "RESEARCHGATE",
+    title: "Mantis Shrimp Dactyl Club – Helicoidal Structure Schematic",
+    url: "https://www.researchgate.net/figure/a-Mantis-shrimp-b-Dactyl-club-c-Schematic-illustrating-the-helicoidal-structure_fig1_381494596",
+    domain: "researchgate.net · fig/381494596",
+  },
+  {
+    id: "08",
+    source: "TAYLOR & FRANCIS",
+    title: "Smart Materials and Structures – Helicoidal Composites",
+    url: "https://www.tandfonline.com/doi/full/10.1080/19475411.2023.2236572",
+    domain: "tandfonline.com · 19475411.2023.2236572",
+  },
+  {
+    id: "09",
+    source: "HELICOID INDUSTRIES",
+    title: "Helicoidal Composite Technology – Commercial Application",
+    url: "https://helicoidind.com/",
+    domain: "helicoidind.com",
+  },
+];
+
 declare global {
   interface Window {
     THREE: any;
@@ -92,6 +183,8 @@ const Index = () => {
     integrityColorS: "#4a9e7f",
     collapseStatus: "",
   });
+
+  const [showPresentation, setShowPresentation] = useState(false);
 
   const rebuildTimeoutRef = useRef<any>(null);
   const paramsRef = useRef(params);
@@ -1574,9 +1667,9 @@ const Index = () => {
           BIO-STRUCT SIM
         </span>
         <div style={{ display: "flex", gap: 24 }}>
-          {["Simulator"].map((label) => (
+          {["Simulator", "Presentation", "Research", "Team"].map((label) => (
             <a key={label} href={`#${label.toLowerCase()}`}
-              style={{ fontSize: 12, color: "#4a6b5c", textDecoration: "none" }}
+              style={{ fontSize: 12, color: "#4a6b5c", textDecoration: "none", fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.05em" }}
               onMouseEnter={(e) => (e.currentTarget.style.color = "#4a9e7f")}
               onMouseLeave={(e) => (e.currentTarget.style.color = "#4a6b5c")}
             >{label}</a>
@@ -1924,6 +2017,525 @@ const Index = () => {
               }}
             />
           </div>
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════════════════ */}
+      {/* SECTION: PRESENTATION                                  */}
+      {/* ═══════════════════════════════════════════════════════ */}
+      <section id="presentation" style={{
+        padding: "80px 32px 60px",
+        maxWidth: 1200,
+        margin: "0 auto",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 40 }}>
+          <span style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 11,
+            color: "#4a9e7f",
+            letterSpacing: "0.1em",
+            opacity: 0.5,
+          }}>[ 02 ]</span>
+          <h2 style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: "clamp(20px, 3vw, 28px)",
+            fontWeight: 600,
+            color: "#d4e8df",
+            letterSpacing: "0.08em",
+            margin: 0,
+          }}>PRESENTATION</h2>
+          <div style={{ flex: 1, height: 1, background: "rgba(74,158,127,0.15)" }} />
+        </div>
+
+        {/* Embedded Canva Preview */}
+        <div style={{
+          position: "relative",
+          borderRadius: 12,
+          overflow: "hidden",
+          border: "1px solid rgba(74,158,127,0.15)",
+          background: "#0a0f0c",
+          cursor: "pointer",
+        }}
+          onClick={() => setShowPresentation(true)}
+        >
+          <div style={{
+            width: "100%",
+            height: "60vh",
+            minHeight: 400,
+            position: "relative",
+          }}>
+            <iframe
+              loading="lazy"
+              style={{
+                position: "absolute",
+                width: "100%",
+                height: "100%",
+                top: 0,
+                left: 0,
+                border: "none",
+                pointerEvents: "none",
+              }}
+              src="https://www.canva.com/design/DAHDRCTTw-E/532qVZvZdD5ZsJj89Cgh9A/view?embed"
+              allowFullScreen
+            />
+            {/* Click overlay */}
+            <div style={{
+              position: "absolute",
+              inset: 0,
+              background: "linear-gradient(to top, rgba(8,12,10,0.6) 0%, transparent 30%, transparent 70%, rgba(8,12,10,0.3) 100%)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "background 0.3s",
+            }}>
+              <div style={{
+                background: "rgba(74,158,127,0.15)",
+                border: "1px solid rgba(74,158,127,0.3)",
+                borderRadius: 12,
+                padding: "14px 28px",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                backdropFilter: "blur(8px)",
+              }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4a9e7f" strokeWidth="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <path d="M9 3v18M3 9h18" />
+                </svg>
+                <span style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 12,
+                  color: "#4a9e7f",
+                  letterSpacing: "0.05em",
+                }}>CLICK TO VIEW FULLSCREEN</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <p style={{
+          fontFamily: "'JetBrains Mono', monospace",
+          fontSize: 11,
+          color: "#4a6b5c",
+          textAlign: "center",
+          marginTop: 16,
+          opacity: 0.6,
+        }}>Nature Inspired Materials — Full Research Presentation</p>
+      </section>
+
+      {/* Presentation Modal */}
+      {showPresentation && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 9999,
+          background: "rgba(0,0,0,0.95)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+        }}>
+          <button
+            onClick={() => setShowPresentation(false)}
+            style={{
+              position: "absolute",
+              top: 20,
+              right: 24,
+              background: "rgba(74,158,127,0.15)",
+              border: "1px solid rgba(74,158,127,0.3)",
+              borderRadius: 8,
+              color: "#4a9e7f",
+              fontSize: 13,
+              padding: "8px 18px",
+              cursor: "pointer",
+              fontFamily: "'JetBrains Mono', monospace",
+              letterSpacing: "0.05em",
+              zIndex: 10000,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(74,158,127,0.25)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(74,158,127,0.15)"; }}
+          >
+            <span>✕</span> CLOSE
+          </button>
+          <div style={{
+            width: "92vw",
+            height: "88vh",
+            borderRadius: 12,
+            overflow: "hidden",
+            border: "1px solid rgba(74,158,127,0.2)",
+          }}>
+            <iframe
+              style={{
+                width: "100%",
+                height: "100%",
+                border: "none",
+              }}
+              src="https://www.canva.com/design/DAHDRCTTw-E/532qVZvZdD5ZsJj89Cgh9A/view?embed"
+              allowFullScreen
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════ */}
+      {/* SECTION: RESEARCH & CITATIONS                          */}
+      {/* ═══════════════════════════════════════════════════════ */}
+      <section id="research" style={{
+        padding: "80px 32px 60px",
+        maxWidth: 1200,
+        margin: "0 auto",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 48 }}>
+          <span style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 11,
+            color: "#4a9e7f",
+            letterSpacing: "0.1em",
+            opacity: 0.5,
+          }}>[ 03 ]</span>
+          <h2 style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: "clamp(20px, 3vw, 28px)",
+            fontWeight: 600,
+            color: "#d4e8df",
+            letterSpacing: "0.08em",
+            margin: 0,
+          }}>RESEARCH & CITATIONS</h2>
+          <div style={{ flex: 1, height: 1, background: "rgba(74,158,127,0.15)" }} />
+        </div>
+
+        {/* Spider Silk Section */}
+        <div style={{ marginBottom: 48 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+            <div style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: "#4a9e7f",
+              boxShadow: "0 0 8px rgba(74,158,127,0.5)",
+            }} />
+            <span style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 11,
+              color: "#4a9e7f",
+              letterSpacing: "0.12em",
+            }}>SPIDER SILK INSPIRED FIBRES</span>
+          </div>
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 460px), 1fr))",
+            gap: 16,
+          }}>
+            {spiderSilkResearch.map((item) => (
+              <a
+                key={item.id}
+                href={item.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "block",
+                  padding: "18px 20px",
+                  background: "rgba(10,15,12,0.6)",
+                  border: "1px solid rgba(74,158,127,0.1)",
+                  borderRadius: 8,
+                  textDecoration: "none",
+                  transition: "all 0.3s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "rgba(74,158,127,0.35)";
+                  e.currentTarget.style.background = "rgba(74,158,127,0.04)";
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                  e.currentTarget.style.boxShadow = "0 4px 20px rgba(74,158,127,0.08)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "rgba(74,158,127,0.1)";
+                  e.currentTarget.style.background = "rgba(10,15,12,0.6)";
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+                  <span style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: "#4a9e7f",
+                    opacity: 0.4,
+                    minWidth: 28,
+                  }}>{item.id}</span>
+                  <div>
+                    <div style={{
+                      fontFamily: "'JetBrains Mono', monospace",
+                      fontSize: 10,
+                      color: "#4a9e7f",
+                      letterSpacing: "0.1em",
+                      marginBottom: 6,
+                    }}>{item.source}</div>
+                    <div style={{
+                      fontSize: 14,
+                      fontWeight: 500,
+                      color: "#d4e8df",
+                      marginBottom: 6,
+                      lineHeight: 1.4,
+                    }}>{item.title}</div>
+                    <div style={{
+                      fontFamily: "'JetBrains Mono', monospace",
+                      fontSize: 10,
+                      color: "#2a4a3a",
+                    }}>{item.domain}</div>
+                  </div>
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+
+        {/* Mantis Shrimp Section */}
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
+            <div style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: "#4a9e7f",
+              boxShadow: "0 0 8px rgba(74,158,127,0.5)",
+            }} />
+            <span style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 11,
+              color: "#4a9e7f",
+              letterSpacing: "0.12em",
+            }}>MANTIS SHRIMP INSPIRED HELICOIDAL STRUCTURES</span>
+          </div>
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 460px), 1fr))",
+            gap: 16,
+          }}>
+            {mantisResearch.map((item) => (
+              <a
+                key={item.id}
+                href={item.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "block",
+                  padding: "18px 20px",
+                  background: "rgba(10,15,12,0.6)",
+                  border: "1px solid rgba(74,158,127,0.1)",
+                  borderRadius: 8,
+                  textDecoration: "none",
+                  transition: "all 0.3s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "rgba(74,158,127,0.35)";
+                  e.currentTarget.style.background = "rgba(74,158,127,0.04)";
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                  e.currentTarget.style.boxShadow = "0 4px 20px rgba(74,158,127,0.08)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "rgba(74,158,127,0.1)";
+                  e.currentTarget.style.background = "rgba(10,15,12,0.6)";
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+                  <span style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: "#4a9e7f",
+                    opacity: 0.4,
+                    minWidth: 28,
+                  }}>{item.id}</span>
+                  <div>
+                    <div style={{
+                      fontFamily: "'JetBrains Mono', monospace",
+                      fontSize: 10,
+                      color: "#4a9e7f",
+                      letterSpacing: "0.1em",
+                      marginBottom: 6,
+                    }}>{item.source}</div>
+                    <div style={{
+                      fontSize: 14,
+                      fontWeight: 500,
+                      color: "#d4e8df",
+                      marginBottom: 6,
+                      lineHeight: 1.4,
+                    }}>{item.title}</div>
+                    <div style={{
+                      fontFamily: "'JetBrains Mono', monospace",
+                      fontSize: 10,
+                      color: "#2a4a3a",
+                    }}>{item.domain}</div>
+                  </div>
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════════════════ */}
+      {/* SECTION: TEAM                                          */}
+      {/* ═══════════════════════════════════════════════════════ */}
+      <section id="team" style={{
+        padding: "80px 32px 100px",
+        maxWidth: 1200,
+        margin: "0 auto",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 48 }}>
+          <span style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 11,
+            color: "#4a9e7f",
+            letterSpacing: "0.1em",
+            opacity: 0.5,
+          }}>[ 04 ]</span>
+          <h2 style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: "clamp(20px, 3vw, 28px)",
+            fontWeight: 600,
+            color: "#d4e8df",
+            letterSpacing: "0.08em",
+            margin: 0,
+          }}>TEAM</h2>
+          <div style={{ flex: 1, height: 1, background: "rgba(74,158,127,0.15)" }} />
+        </div>
+
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+          gap: 24,
+        }}>
+          {teamMembers.map((member, idx) => (
+            <div
+              key={member.rollNo}
+              style={{
+                background: "rgba(10,15,12,0.6)",
+                border: "1px solid rgba(74,158,127,0.12)",
+                borderRadius: 12,
+                padding: 28,
+                textAlign: "center",
+                transition: "all 0.4s ease",
+                position: "relative",
+                overflow: "hidden",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "rgba(74,158,127,0.35)";
+                e.currentTarget.style.transform = "translateY(-4px)";
+                e.currentTarget.style.boxShadow = "0 8px 32px rgba(74,158,127,0.1)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "rgba(74,158,127,0.12)";
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "none";
+              }}
+            >
+              {/* Top accent line */}
+              <div style={{
+                position: "absolute",
+                top: 0,
+                left: "20%",
+                right: "20%",
+                height: 2,
+                background: "linear-gradient(90deg, transparent, #4a9e7f, transparent)",
+                opacity: 0.5,
+              }} />
+
+              {/* Member number */}
+              <div style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 11,
+                color: "#4a9e7f",
+                opacity: 0.3,
+                marginBottom: 16,
+              }}>0{idx + 1}</div>
+
+              {/* Photo */}
+              <div style={{
+                width: 120,
+                height: 120,
+                borderRadius: "50%",
+                margin: "0 auto 20px",
+                overflow: "hidden",
+                border: "2px solid rgba(74,158,127,0.2)",
+                boxShadow: "0 0 20px rgba(74,158,127,0.1)",
+              }}>
+                <img
+                  src={member.photo}
+                  alt={member.name}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    filter: "grayscale(30%) contrast(1.1)",
+                  }}
+                />
+              </div>
+
+              {/* Name */}
+              <h3 style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 16,
+                fontWeight: 600,
+                color: "#d4e8df",
+                letterSpacing: "0.08em",
+                margin: "0 0 6px 0",
+              }}>{member.name}</h3>
+
+              {/* Roll Number */}
+              <div style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 13,
+                color: "#4a9e7f",
+                marginBottom: 10,
+                display: "inline-block",
+                padding: "3px 12px",
+                background: "rgba(74,158,127,0.08)",
+                borderRadius: 4,
+                border: "1px solid rgba(74,158,127,0.15)",
+              }}>ROLL: {member.rollNo}</div>
+
+              {/* Role */}
+              <p style={{
+                fontSize: 12,
+                color: "#4a6b5c",
+                margin: "10px 0 0",
+                lineHeight: 1.5,
+              }}>{member.role}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          textAlign: "center",
+          marginTop: 64,
+          paddingTop: 32,
+          borderTop: "1px solid rgba(74,158,127,0.08)",
+        }}>
+          <p style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 10,
+            color: "#1e2e26",
+            letterSpacing: "0.1em",
+          }}>
+            NATURE INSPIRED MATERIALS — BIO-STRUCT SIM © 2025
+          </p>
+          <p style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 9,
+            color: "#1a2a20",
+            letterSpacing: "0.08em",
+            marginTop: 6,
+          }}>
+            Helicoid Structure Simulator · Spider Silk & Mantis Shrimp Inspired Engineering
+          </p>
         </div>
       </section>
 
